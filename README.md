@@ -1,3 +1,5 @@
+bash <(curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh) 192.168.64.6
+
 # k8s-scripts-public
 Multipass kubernetes
 
@@ -16,7 +18,7 @@ Apply MetalLB Manifests: On the master VM:
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
 
 This deploys the MetalLB controller and speaker pods in the metallb-system namespace:
-kubectl apply -f https://raw.githubusercontent.com/ndjumaev81/k8s-scripts-public/refs/heads/main/metallb-config.yaml
+kubectl apply -f https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/metallb-config.yaml
 
 Deploy a Test Pod:
 kubectl run nginx-test --image=nginx --restart=Never --port=80
@@ -49,36 +51,36 @@ From your macOS host, use Multipass to copy the file:
 multipass copy-files master:/etc/kubernetes/admin.conf ~/kubeconfig-from-master.conf
 
 
-Check what kubectl sees in your current configuration:
+# Check what kubectl sees in your current configuration:
 kubectl config view
 
-This shows all clusters, users, and contexts from the file specified by KUBECONFIG or ~/.kube/config.
+# This shows all clusters, users, and contexts from the file specified by KUBECONFIG or ~/.kube/config.
 
-List available contexts:
+# List available contexts:
 kubectl config get-contexts
 
-Merge Configs into ~/.kube/config
-Merge multiple kubeconfig files into one for easier switching:
-Back up your existing ~/.kube/config:
+# Merge Configs into ~/.kube/config
+# Merge multiple kubeconfig files into one for easier switching:
+# Back up your existing ~/.kube/config:
 cp ~/.kube/config ~/.kube/config.backup
 
-Merge configs (e.g., kubeconfig-from-master into config):
+# Merge configs (e.g., kubeconfig-from-master into config):
 KUBECONFIG=~/.kube/config:~/.kube/multipass-kube-from-master kubectl config view --flatten > ~/.kube/config-merged
 mv ~/.kube/config-merged ~/.kube/config
 chmod 600 ~/.kube/config
 
-List contexts:
+# List contexts:
 kubectl config get-contexts
 
-Switch contexts:
+# Switch contexts:
 kubectl config use-context kubernetes-admin@kubernetes
 
-Set a Specific Context as Default
-After merging or using a single file, set the default context:
+# Set a Specific Context as Default
+# After merging or using a single file, set the default context:
 kubectl config set-context --current --namespace=default
 
-Managing Multiple Clusters Long-Term
-Rename Contexts: If context names overlap, edit ~/.kube/config or use:
+# Managing Multiple Clusters Long-Term
+# Rename Contexts: If context names overlap, edit ~/.kube/config or use:
 kubectl config rename-context kubernetes-admin@kubernetes multipass-cluster
 
 # Host NFS setup
@@ -119,3 +121,103 @@ kubectl get storageclass nfs-storage
 
 # kubernetes nfs setup
 ./deploy-nfs-provisioner.sh 192.168.64.1 /Users/<username>/nfs-share
+
+
+# Install the Strimzi Kafka Operator:
+# Create a namespace for Kafka:
+kubectl create namespace kafka
+
+# Deploy the Strimzi Cluster Operator using the official installation YAML:
+kubectl apply -f 'https://strimzi.io/install/latest?namespace=kafka' -n kafka
+
+# After applying the Strimzi installation, confirm the CRDs are now available:
+kubectl get crd | grep kafka.strimzi.io
+
+# Validate YAML: Ensure your strimzi-kafka.yaml has no syntax errors:
+kubectl apply -f strimzi-kafka.yaml --dry-run=server
+
+# Deployment Steps
+# Apply Bridge and Swagger UI First:
+kubectl apply -f kafka-bridge-and-swagger.yaml -n kafka
+# Apply Kafka Cluster Second:
+kubectl apply -f kafka-strimzi-cluster.yaml -n kafka
+
+
+# Verify VM resources:
+multipass info master
+multipass info worker1
+multipass info worker2
+
+# Aggregate Info for All VMs
+multipass info --all
+
+# Increase VM Resources
+multipass stop master worker1 worker2
+
+multipass set local.master.cpus=4
+multipass set local.master.memory=6G
+
+multipass set local.worker1.cpus=4
+multipass set local.worker1.memory=6G
+
+multipass set local.worker2.cpus=4
+multipass set local.worker2.memory=6G
+
+multipass start master worker1 worker2
+
+# Assign a Static IP via Cloud-Init
+# Multipass allows setting up an internal static IP using cloud-init:
+# Create a cloud-init.yaml file:
+#cloud-config
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: no
+      addresses:
+        - 192.168.64.100/24
+      gateway4: 192.168.64.1
+      nameservers:
+        addresses:
+          - 8.8.8.8
+
+# Or launch the instance with the static IP:
+multipass launch --name master --cloud-init cloud-init.yaml
+
+# Use multipass alias with multipass shell
+# Instead of relying on the IP, use:
+multipass alias master shell master
+# Then access it by (This avoids needing the IP altogether.):
+master
+
+# Install Metrics Server:
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+# Verify:
+kubectl get pods -n kube-system | grep metrics-server
+# Wait for it to run, then:
+kubectl top nodes
+# If it fails (e.g., TLS issues), edit the deployment to skip verification:
+kubectl edit deployment metrics-server -n kube-system
+# Add --kubelet-insecure-tls to args:
+spec:
+  template:
+    spec:
+      containers:
+      - args:
+        - --kubelet-insecure-tls
+
+# if it will not work then try to restart:
+# Trigger Pod Restart
+# Wait for Automatic Rollout: Check the pod status to see if a new one starts:
+kubectl get pods -n kube-system -l k8s-app=metrics-server
+# Force Restart (if needed): If the pod doesn’t update automatically within a minute, manually delete it to force a restart:
+kubectl delete pod -n kube-system -l k8s-app=metrics-server
+
+# Verify applied configuration update
+kubectl get pods -n kube-system | grep metrics-server 
+
+# output should be:
+metrics-server-596474b58-gg7tz     1/1     Running   0          88s
+
+# metrics should be shonw then
+kubectl top nodes

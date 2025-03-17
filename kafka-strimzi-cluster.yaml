@@ -18,7 +18,7 @@ spec:
         tls: false
         configuration:
           bootstrap:
-            loadBalancerIP: "192.168.65.100"
+            loadBalancerIP: "192.168.64.100" # Fixed IP for bootstrap
     config:
       log.retention.hours: 168
       log.retention.bytes: 838860800
@@ -31,27 +31,27 @@ spec:
       type: persistent-claim
       size: 10Gi
       deleteClaim: false
-      class: local-path-retain
+      class: nfs-storage-retain
     resources:
       requests:
-        memory: "2Gi"
-        cpu: "1"
+        memory: "500Mi"
+        cpu: "0.5"
       limits:
-        memory: "4Gi"
-        cpu: "2"
+        memory: "1Gi"
+        cpu: "1"
   zookeeper:
     replicas: 3
     storage:
       type: persistent-claim
       size: 10Gi
       deleteClaim: false
-      class: local-path-retain
+      class: nfs-storage-retain
     resources:
       requests:
-        memory: "1Gi"
-        cpu: "500m"
+        memory: "500Mi"
+        cpu: "0.5"
       limits:
-        memory: "2Gi"
+        memory: "1Gi"
         cpu: "1"
   entityOperator:
     topicOperator: {}

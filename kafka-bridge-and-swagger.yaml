@@ -1,0 +1,119 @@
+# Kafka Bridge
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaBridge
+metadata:
+  name: my-bridge
+  namespace: kafka
+  labels:
+    app: kafka-bridge
+spec:
+  replicas: 1
+  bootstrapServers: "192.168.64.100:9092"  # External Kafka bootstrap IP (predictable)
+  http:
+    port: 8080
+    cors:
+      allowedOrigins:
+        - "http://192.168.64.102:8181"  # Swagger UI fixed IP
+      allowedMethods:
+        - "GET"
+        - "POST"
+        - "PUT"
+        - "DELETE"
+        - "OPTIONS"
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "0.5"
+    limits:
+      memory: "1Gi"
+      cpu: "1"
+  jvmOptions:
+    -Xms: "512m"
+    -Xmx: "1024m"
+    gcLoggingEnabled: false
+  enableMetrics: true
+  template:
+    pod:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+---
+# Custom LoadBalancer Service for Kafka Bridge
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-bridge-lb  # Unique name to avoid Strimzi override
+  namespace: kafka
+  annotations:
+    metallb.universe.tf/loadBalancerIP: "192.168.64.101"
+spec:
+  selector:
+    strimzi.io/kind: KafkaBridge
+    strimzi.io/name: my-bridge-bridge
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+  type: LoadBalancer
+  loadBalancerIP: "192.168.64.101"  # Fixed IP for Kafka Bridge
+---
+# Swagger UI Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: swagger-ui
+  namespace: kafka
+  labels:
+    app: swagger-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: swagger-ui
+  template:
+    metadata:
+      labels:
+        app: swagger-ui
+    spec:
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: swagger-ui
+        image: swaggerapi/swagger-ui:latest
+        ports:
+        - containerPort: 8181
+        env:
+        - name: SWAGGER_JSON_URL
+          value: "http://192.168.64.101:8080/openapi"  # Kafka Bridge fixed IP
+        - name: PORT
+          value: "8181"
+        - name: BASE_URL
+          value: "/"
+        resources:
+          limits:
+            cpu: "0.5"
+            memory: "512Mi"
+          requests:
+            cpu: "0.2"
+            memory: "256Mi"
+---
+# Swagger UI Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: swagger-ui-service
+  namespace: kafka
+  annotations:
+    metallb.universe.tf/loadBalancerIP: "192.168.64.102"  # Specify LoadBalancer IP via MetalLB annotation
+spec:
+  selector:
+    app: swagger-ui
+  ports:
+  - protocol: TCP
+    port: 8181
+    targetPort: 8181
+  type: LoadBalancer
+  loadBalancerIP: "192.168.64.102"  # Fixed IP for Swagger UI
