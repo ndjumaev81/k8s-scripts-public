@@ -43,7 +43,7 @@ spec:
     replicas: 3
     storage:
       type: persistent-claim
-      size: 10Gi
+      size: 1Gi
       deleteClaim: false
       class: nfs-storage-retain
     resources:

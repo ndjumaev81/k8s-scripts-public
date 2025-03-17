@@ -113,6 +113,8 @@ provisioner: nfs-provisioner
 reclaimPolicy: Retain
 parameters:
   archiveOnDelete: "false"
+mountOptions:
+  - vers=3  # Force NFSv3
 EOF
 
 echo "NFS provisioner deployed with server ${NFS_SERVER} and path ${NFS_PATH}."

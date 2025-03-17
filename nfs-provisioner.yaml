@@ -104,3 +104,5 @@ provisioner: nfs-provisioner
 reclaimPolicy: Retain
 parameters:
   archiveOnDelete: "false"  # Set to "true" to archive instead of delete
+mountOptions:
+  - vers=3  # Force NFSv3

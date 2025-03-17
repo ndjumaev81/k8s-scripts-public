@@ -139,6 +139,8 @@ kubectl apply -f strimzi-kafka.yaml --dry-run=server
 # Deployment Steps
 # Apply Bridge and Swagger UI First:
 kubectl apply -f kafka-bridge-and-swagger.yaml -n kafka
+# Apply Registry
+kubectl apply -f apicurio-registry.yaml -n kafka
 # Apply Kafka Cluster Second:
 kubectl apply -f kafka-strimzi-cluster.yaml -n kafka
 
@@ -221,3 +223,29 @@ metrics-server-596474b58-gg7tz     1/1     Running   0          88s
 
 # metrics should be shonw then
 kubectl top nodes
+
+
+
+
+sudo nfsd update
+sudo nfsd restart
+sleep 2
+
+mkdir -p ~/nfs-mount1
+sudo mount -t nfs -v 192.168.64.1:/Users/<username>/nfs-share ~/nfs-mount
+
+mount | grep nfs-mount1
+sudo umount ~/nfs-mount1
+
+mount | grep nfs-mount1
+ls ~/nfs-mount1
+rmdir ~/nfs-mount1
+
+
+sudo cat /etc/exports
+/Users/<username>/nfs-share -network 192.168.64.0 -mask 255.255.255.0 -maproot=0 -alldirs
+
+ 1616  sudo nano /etc/exports
+ 1617  sudo nfsd update
+ 1618  sudo nfsd restart
+ 1619  sudo showmount -e localhost

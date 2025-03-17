@@ -1,0 +1,146 @@
+# PersistentVolumeClaim for PostgreSQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: kafka
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: nfs-storage-retain
+
+---
+# PostgreSQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      securityContext:
+        fsGroup: 999  # Matches postgres user's GID
+      containers:
+      - name: postgres
+        image: postgres:16
+        env:
+        - name: POSTGRES_DB
+          value: apicurio-registry
+        - name: POSTGRES_USER
+          value: apicurio-registry
+        - name: POSTGRES_PASSWORD
+          value: password
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: kafka
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+
+---
+# Apicurio Registry Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apicurio-registry
+  namespace: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apicurio-registry
+  template:
+    metadata:
+      labels:
+        app: apicurio-registry
+    spec:
+      containers:
+      - name: apicurio-registry
+        image: apicurio/apicurio-registry:latest
+        env:
+        - name: APICURIO_STORAGE_KIND
+          value: sql
+        - name: APICURIO_STORAGE_SQL_KIND
+          value: postgresql
+        - name: APICURIO_DATASOURCE_URL
+          value: jdbc:postgresql://postgres.kafka.svc.cluster.local:5432/apicurio-registry
+        - name: APICURIO_DATASOURCE_USERNAME
+          value: apicurio-registry
+        - name: APICURIO_DATASOURCE_PASSWORD
+          value: password
+        - name: QUARKUS_HTTP_PORT
+          value: "8282"
+        ports:
+        - containerPort: 8282
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8282
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8282
+          initialDelaySeconds: 10
+          periodSeconds: 30
+
+---
+# Apicurio Registry Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: apicurio-registry
+  namespace: kafka
+  annotations:
+    metallb.universe.tf/loadBalancerIP: "192.168.64.103"  # MetalLB annotation for static IP
+spec:
+  selector:
+    app: apicurio-registry
+  ports:
+  - port: 8282
+    targetPort: 8282
+  type: LoadBalancer
+  loadBalancerIP: "192.168.64.103"
