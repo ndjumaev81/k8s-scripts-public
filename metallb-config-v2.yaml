@@ -1,0 +1,44 @@
+# Fixed IP Pool
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: fixed-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 192.168.64.100-192.168.64.120
+  autoAssign: false  # Prevents automatic assignment; IPs must be explicitly requested
+
+---
+# Dynamic IP Pool
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: dynamic-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 192.168.64.121-192.168.64.150
+  autoAssign: true  # Allows automatic assignment
+
+---
+# Advertisement for Fixed Pool
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: fixed-advertisement
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - fixed-pool
+
+---
+# Advertisement for Dynamic Pool
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: dynamic-advertisement
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+  - dynamic-pool

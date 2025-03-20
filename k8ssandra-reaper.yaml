@@ -1,0 +1,16 @@
+apiVersion: reaper.k8ssandra.io/v1alpha1
+kind: Reaper
+metadata:
+  name: cp-reaper
+  namespace: k8ssandra-operator
+spec:
+  storageType: local  # Valid value per your earlier success
+  storageConfig:
+    storageClassName: nfs-storage-retain  # Your NFS storage class
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 256Mi
+  httpManagement:
+    enabled: true  # Enables the UI

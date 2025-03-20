@@ -1,5 +1,11 @@
 bash <(curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh) 192.168.64.6
 
+multipass launch --name master --cpus 2 --memory 4G --disk 30G 22.04
+multipass launch --name worker1 --cpus 8 --memory 8G --disk 30G 22.04
+multipass launch --name worker2 --cpus 8 --memory 8G --disk 30G 22.04
+multipass launch --name worker3 --cpus 8 --memory 8G --disk 30G 22.04
+multipass launch --name worker4 --cpus 2 --memory 4G --disk 20G 22.04
+
 # k8s-scripts-public
 Multipass kubernetes
 
@@ -10,6 +16,30 @@ Run it with the master IP: ./master.sh 192.168.64.X
 Make it executable: chmod +x worker.sh
 
 Run it with the master IP: ./worker.sh 192.168.64.X
+
+# Retrieve the kubeadm join Details
+# If you saved the original kubeadm init output: Look for something like:
+kubeadm join 192.168.64.6:6443 --token 0ab9ad.lbhe66pv4yslcsti --discovery-token-ca-cert-hash sha256:4086e0b...
+
+# If you didn’t save it:
+# Generate a new token on the master VM (Replace master with your master VM’s name if different.):
+multipass exec master -- kubeadm token create --print-join-command
+
+# From your host, check the cluster:
+kubectl get nodes -o wide
+
+# If workerX isn’t Ready, check its logs:
+multipass exec worker2 -- journalctl -u kubelet
+
+# Check the Cluster Nodes:
+kubectl get nodes
+
+# If you see a stale worker3 (e.g., "NotReady"), delete it from the cluster:
+kubectl delete node worker3
+
+# Verify the New Node:
+kubectl get nodes
+kubectl get pods -o wide
 
 
 Steps to Test LoadBalancer Type with MetalLB
@@ -249,3 +279,178 @@ sudo cat /etc/exports
  1617  sudo nfsd update
  1618  sudo nfsd restart
  1619  sudo showmount -e localhost
+
+
+
+ # CASSANDRA
+# Do below commands from host machine.
+# Add the Cert-Manager Helm Repository:
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+# Install Cert-Manager:
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --kubeconfig ~/.kube/config \
+  --version v1.14.4 \
+  --set installCRDs=true \
+  --kube-context multipass-cluster
+
+# --namespace cert-manager: Installs in a dedicated namespace.
+# --create-namespace: Creates the namespace if it doesn’t exist.
+# --version v1.14.4: Uses a recent stable version compatible with Kubernetes 1.28 (from your master.sh).
+# --set installCRDs=true: Installs the Custom Resource Definitions (CRDs) required by cert-manager.
+# --kube-context multipass-cluster: Ensures it uses your cluster’s context.
+
+# Verify Cert-Manager: Wait for the pods to be ready:
+kubectl get pods -n cert-manager
+
+# K8ssandra Operator Installation
+helm install k8ssandra-operator k8ssandra/k8ssandra-operator \
+  --namespace k8ssandra-operator \
+  --create-namespace \
+  --kubeconfig ~/.kube/config \
+  --kube-context multipass-cluster \
+  --debug
+
+# Verify the Installation
+kubectl get pods -n k8ssandra-operator
+
+# Install k8ssandra cluster
+kubectl apply -f k8ssandra-operator.yaml -n k8ssandra-operator
+
+# Checl taints
+kubectl describe nodes | grep -i taint
+
+# Inspect Pending Pods
+kubectl get pods -n k8ssandra-operator --field-selector=status.phase!=Running
+
+# After adding new worker to kube cluster to enable NFS don't forget to install "nfs-common"
+multipass shell worker3
+sudo apt update
+sudo apt install -y nfs-common
+
+
+# Understanding the Stargate Service
+# exposes the following ports:
+# 8080: REST API endpoint
+# 8081: GraphQL API endpoint
+# 8082: Stargate Admin API
+# 8084: Health check endpoint
+# 8085: Metrics endpoint
+# 8090: Swagger UI (this is likely what you want for browser access)
+# 9042: Native CQL (Cassandra Query Language) port
+
+# Get stargate pod name
+kubectl get pods -n k8ssandra-operator
+
+# Inspect Pod Labels
+# Run the following command to view the full details of the pod, including its labels:
+kubectl get pod demo-dc1-default-stargate-deployment-XXXXXXXX -n k8ssandra-operator -o yaml
+
+# Look for the metadata.labels section in the output. Alternatively, for a more concise view, use:
+kubectl get pod demo-dc1-default-stargate-deployment-58c75d8b7f-w5m76 -n k8ssandra-operator -o jsonpath='{.metadata.labels}'
+
+# Get username
+CASS_USERNAME=$(kubectl get secret demo-superuser -n k8ssandra-operator -o=jsonpath='{.data.username}' | base64 --decode)
+echo $CASS_USERNAME
+
+# Get password
+CASS_PASSWORD=$(kubectl get secret demo-superuser -n k8ssandra-operator -o=jsonpath='{.data.password}' | base64 --decode)
+echo $CASS_PASSWORD
+
+# Verify cluster status
+kubectl exec -it demo-dc1-default-sts-0 -n k8ssandra-operator -c cassandra -- nodetool -u $CASS_USERNAME -pw $CASS_PASSWORD status
+
+# K8ssandra swagger-ui port is 8082:
+    Access Document Data API
+    Access REST Data API
+    Access GraphQL Data API
+
+You can access the following interfaces to make development easier as well:
+
+    Stargate swagger UI: http://192.168.64.104:8082/swagger-ui
+    GraphQL Playground: http://192.168.64.104:8080/playground
+
+curl -L -X POST 'http://192.168.64.104:8081/v1/auth' -H 'Content-Type: application/json' --data-raw '{"username": "<k8ssandra-username>", "password": "<k8ssandra-password>"}'
+
+The default ports assignments align to the following services and interfaces:
+
+Port
+	
+
+Service/Interface
+
+8080
+	
+
+GraphQL interface for CRUD
+
+8081
+	
+
+REST authorization service for generating authorization tokens
+
+8082
+	
+
+REST interface for CRUD
+
+8084
+	
+
+Health check (/healthcheck, /checker/liveness, /checker/readiness) and metrics (/metrics)
+
+8180
+	
+
+Document API interface for CRUD
+
+8090
+	
+
+gRPC interface for CRUD
+
+9042
+	
+
+CQL service
+
+
+
+# REAPER
+kubectl apply -f k8ssandra-reaper.yaml
+
+# The Reaper custom resource itself provides status information about its deployment.
+kubectl get reaper cp-reaper -n k8ssandra-operator
+
+# For more details:
+kubectl describe reaper cp-reaper -n k8ssandra-operator
+
+# The k8ssandra-operator creates a pod to run the Reaper application.
+kubectl get pods -n k8ssandra-operator | grep reaper
+
+# To see more details:
+kubectl describe pod cp-reaper-0 -n k8ssandra-operator
+
+# Check Persistent Volume Claims (PVCs)
+kubectl get pvc -n k8ssandra-operator
+
+# For more info:
+kubectl describe pvc reaper-data-cp-reaper-0 -n k8ssandra-operator
+
+# A Kubernetes Service is created to expose Reaper’s HTTP management interface (since httpManagement: enabled)
+kubectl get svc -n k8ssandra-operator | grep reaper
+
+# Details:
+kubectl describe svc cp-reaper-service -n k8ssandra-operator
+
+# Verify Integration with K8ssandraCluster
+kubectl get k8ssandracluster demo -n k8ssandra-operator
+
+# WebUI of Reaper
+kubectl port-forward svc/cp-reaper-service 8080:8080 -n k8ssandra-operator
+
+# Accessible via the following:
+http://localhost:8080/webui

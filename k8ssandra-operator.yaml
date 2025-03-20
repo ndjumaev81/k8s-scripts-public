@@ -1,0 +1,36 @@
+apiVersion: k8ssandra.io/v1alpha1
+kind: K8ssandraCluster
+metadata:
+  name: demo
+spec:
+  reaper:
+    reaperRef:
+      name: cp-reaper
+      namespace: k8ssandra-operator  # Matches where cp-reaper is deployed
+  cassandra:
+    serverVersion: "4.0.1"
+    datacenters:
+      - metadata:
+          name: dc1
+        size: 3
+        storageConfig:
+          cassandraDataVolumeClaimSpec:
+            storageClassName: nfs-storage-retain
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 20Gi
+        config:
+          jvmOptions:
+            heapSize: 512M
+        stargate:
+          size: 1
+          heapSize: 256M
+          resources:
+            requests:
+              cpu: "500m"        # Request 0.5 CPU
+              memory: "1024Mi"   # Request 1GB RAM
+            limits:
+              cpu: "1"           # Limit to 1 CPU
+              memory: "2048Mi"   # Limit to 2GB RAM
