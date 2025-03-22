@@ -1,0 +1,19 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnector
+metadata:
+  name: oracle-jdbc-source
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-connect
+spec:
+  class: io.confluent.connect.jdbc.JdbcSourceConnector
+  tasksMax: 1
+  config:
+    connection.url: "jdbc:oracle:thin:@//oracle-host:1521/service_name"
+    connection.user: "your_username"
+    connection.password: "your_password"
+    mode: "incrementing"
+    incrementing.column.name: "id"
+    table.whitelist: "your_table_name"
+    topic.prefix: "oracle-"
+    poll.interval.ms: "5000"

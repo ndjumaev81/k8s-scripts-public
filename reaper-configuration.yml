@@ -1,0 +1,93 @@
+# Copyright 2017-2017 Spotify AB
+# Copyright 2017-2019 The Last Pickle Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+segmentCountPerNode: ${REAPER_SEGMENT_COUNT_PER_NODE}
+repairParallelism: ${REAPER_REPAIR_PARALELLISM}
+repairIntensity: ${REAPER_REPAIR_INTENSITY}
+maxPendingCompactions: ${REAPER_MAX_PENDING_COMPACTIONS}
+scheduleDaysBetween: ${REAPER_SCHEDULE_DAYS_BETWEEN}
+repairRunThreadCount: ${REAPER_REPAIR_RUN_THREADS}
+hangingRepairTimeoutMins: ${REAPER_HANGING_REPAIR_TIMEOUT_MINS}
+storageType: ${REAPER_STORAGE_TYPE}
+enableCrossOrigin: ${REAPER_ENABLE_CROSS_ORIGIN}
+incrementalRepair: ${REAPER_INCREMENTAL_REPAIR}
+subrangeIncrementalRepair: ${REAPER_SUBRANGE_INCREMENTAL}
+blacklistTwcsTables: ${REAPER_BLACKLIST_TWCS}
+enableDynamicSeedList: ${REAPER_ENABLE_DYNAMIC_SEED_LIST}
+repairManagerSchedulingIntervalSeconds: ${REAPER_REPAIR_MANAGER_SCHEDULING_INTERVAL_SECONDS}
+jmxConnectionTimeoutInSeconds: ${REAPER_JMX_CONNECTION_TIMEOUT_IN_SECONDS}
+useAddressTranslator: ${REAPER_USE_ADDRESS_TRANSLATOR}
+maxParallelRepairs: ${REAPER_MAX_PARALLEL_REPAIRS}
+scheduleRetryOnError: ${REAPER_SCHEDULE_RETRY_ON_ERROR:-false}
+scheduleRetryDelay: ${REAPER_SCHEDULE_RETRY_DELAY:-PT1H}
+
+datacenterAvailability: ${REAPER_DATACENTER_AVAILABILITY}
+
+autoScheduling:
+  enabled: ${REAPER_AUTO_SCHEDULING_ENABLED}
+  initialDelayPeriod: ${REAPER_AUTO_SCHEDULING_INITIAL_DELAY_PERIOD}
+  periodBetweenPolls: ${REAPER_AUTO_SCHEDULING_PERIOD_BETWEEN_POLLS}
+  timeBeforeFirstSchedule: ${REAPER_AUTO_SCHEDULING_TIME_BEFORE_FIRST_SCHEDULE}
+  scheduleSpreadPeriod: ${REAPER_AUTO_SCHEDULING_SCHEDULE_SPREAD_PERIOD}
+  adaptive: ${REAPER_AUTO_SCHEDULING_ADAPTIVE}
+  incremental: ${REAPER_AUTO_SCHEDULING_INCREMENTAL}
+  percentUnrepairedThreshold: ${REAPER_AUTO_SCHEDULING_PERCENT_UNREPAIRED_THRESHOLD}
+  excludedKeyspaces: ${REAPER_AUTO_SCHEDULING_EXCLUDED_KEYSPACES}
+  excludedClusters: ${REAPER_AUTO_SCHEDULING_EXCLUDED_CLUSTERS}
+
+jmxPorts: ${REAPER_JMX_PORTS}
+
+jmxmp:
+  enabled: ${REAPER_JMXMP_ENABLED}
+  ssl: ${REAPER_JMXMP_SSL}
+
+logging:
+  level: ${REAPER_LOGGING_ROOT_LEVEL}
+  loggers: ${REAPER_LOGGING_LOGGERS}
+  appenders:
+    - type: console
+      logFormat: ${REAPER_LOGGING_APPENDERS_CONSOLE_LOG_FORMAT}
+      threshold: ${REAPER_LOGGING_APPENDERS_CONSOLE_THRESHOLD}
+
+server:
+  type: default
+  applicationConnectors:
+    - type: http
+      port: ${REAPER_SERVER_APP_PORT}
+      bindHost: ${REAPER_SERVER_APP_BIND_HOST}
+  adminConnectors:
+    - type: http
+      port: ${REAPER_SERVER_ADMIN_PORT}
+      bindHost: ${REAPER_SERVER_ADMIN_BIND_HOST}
+  requestLog:
+    appenders: []
+
+httpManagement:
+  enabled: ${REAPER_HTTP_MANAGEMENT_ENABLE}
+  mgmtApiMetricsPort: ${REAPER_MGMT_API_METRICS_PORT}
+  keystore: ${REAPER_HTTP_MANAGEMENT_KEYSTORE_PATH}
+  truststore: ${REAPER_HTTP_MANAGEMENT_TRUSTSTORE_PATH}
+  truststoresDir: ${REAPER_HTTP_MANAGEMENT_TRUSTSTORES_DIR}
+
+persistenceStoragePath: /var/lib/cassandra-reaper/storage
+
+cryptograph:
+  type: symmetric
+  algorithm: AES
+  cipher: AES/CBC/PKCS5Padding
+  keyStrength: 256
+  salt: e8a685fcb849e6aa89c884d6c2023d1d
+  iterationCount: 1000
+  systemPropertySecret: REAPER_ENCRYPTION_KEY

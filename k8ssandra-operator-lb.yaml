@@ -6,6 +6,8 @@ metadata:
   annotations:
     metallb.universe.tf/loadBalancerIP: "192.168.64.104"  # Pick an IP from your pool
 spec:
+  type: LoadBalancer
+  loadBalancerIP: "192.168.64.104"  # Fixed IP for Stargate Swagger UI
   selector:
     app.kubernetes.io/component: stargate  # Matches the Stargate deployment labels
     k8ssandra.io/stargate: demo-dc1-stargate  # Adjust based on your Stargate pod labels
@@ -18,5 +20,38 @@ spec:
     port: 8081
     targetPort: 8081
     name: auth  # Authorization endpoint
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reaper-ui-lb
+  namespace: k8ssandra-operator
+  annotations:
+    metallb.universe.tf/loadBalancerIP: "192.168.64.105"
+spec:
   type: LoadBalancer
-  loadBalancerIP: "192.168.64.104"  # Fixed IP for Stargate Swagger UI
+  loadBalancerIP: "192.168.64.105"
+  selector:
+    app.kubernetes.io/component: reaper
+    k8ssandra.io/reaper: cp-reaper
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-dc1-jmx-internal
+  namespace: k8ssandra-operator
+spec:
+  type: ClusterIP
+  selector:
+    cassandra.datastax.com/cluster: demo
+    cassandra.datastax.com/datacenter: dc1
+  ports:
+    - name: jmx
+      port: 7199
+      targetPort: 7199
+      protocol: TCP

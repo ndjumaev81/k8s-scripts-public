@@ -314,6 +314,13 @@ helm install k8ssandra-operator k8ssandra/k8ssandra-operator \
   --kube-context multipass-cluster \
   --debug
 
+# OPTION: uninstall if needed
+helm uninstall k8ssandra-operator \
+  --namespace k8ssandra-operator \
+  --kubeconfig ~/.kube/config \
+  --kube-context multipass-cluster \
+  --debug
+
 # Verify the Installation
 kubectl get pods -n k8ssandra-operator
 
@@ -454,3 +461,119 @@ kubectl port-forward svc/cp-reaper-service 8080:8080 -n k8ssandra-operator
 
 # Accessible via the following:
 http://localhost:8080/webui
+
+# Extract the JMX Username and Password
+# Describe the Secret:
+kubectl get secret -n k8ssandra-operator
+# Decode the Username:
+kubectl get secret demo-superuser -n k8ssandra-operator -o jsonpath='{.data.username}' | base64 -d
+# Decode the Password:
+kubectl get secret demo-superuser -n k8ssandra-operator -o jsonpath='{.data.password}' | base64 -d
+
+# Verify Reaper’s Configuration
+# Check the Reaper Pod’s Configuration
+kubectl exec -it cp-reaper-0 -n k8ssandra-operator -- /bin/sh
+
+# Look for the Configuration File
+
+
+kubectl create configmap reaper-config -n k8ssandra-operator --from-file=cassandra-reaper.yml=cassandra-reaper-updated.yml
+
+
+# VALID SEED SERVICE ENDPOINT: 
+# demo-seed-service.k8ssandra-operator.svc.cluster.local
+# The demo-seed-service is a headless service created by the K8ssandra operator to provide a stable DNS entry for the seed nodes of the demo cluster.
+
+kubectl get endpoints demo-seed-service -n k8ssandra-operator -o yaml
+
+
+
+
+# Kafka-connector:
+# Visit Confluent Hub JDBC Connector to see available versions.
+# use a Maven command to list available versions:
+mvn dependency:get -DrepoUrl=https://packages.confluent.io/maven/ -DgroupId=io.confluent -DartifactId=kafka-connect-jdbc -Dversion=10.7.4
+
+
+# Deploy Kafka Connect:
+kubectl apply -f kafka-connect.yaml -n kafka
+
+# Verify Deployment:
+kubectl get pods -n kafka
+
+# Check logs
+kubectl logs my-connect-connect-0 -n kafka
+
+# Add the Oracle Connector:
+# oracle-jdbc-connector.yaml
+kubectl apply -f oracle-jdbc-connector.yaml -n kafka
+
+# Validate Data Flow: Check the connector status:
+kubectl get kafkaconnector oracle-jdbc-source -n kafka
+
+# Consume messages:
+kubectl exec -it my-cluster-kafka-0 -n kafka -- kafka-console-consumer --bootstrap-server localhost:29092 --topic oracle-your_table_name --from-beginning
+
+# Deploy the Docker Registry
+# Create a Namespace
+kubectl create namespace registry
+
+# Create a Secret for Authentication
+# You'll need a username and password for the registry. We'll use htpasswd to generate a basic auth file.
+# Install htpasswd if not present (e.g., on Ubuntu: sudo apt install apache2-utils)
+## mkdir auth
+## htpasswd -Bc auth/htpasswd <username> # Replace <username> with your desired username
+# Enter a password when prompted
+
+# Create a Kubernetes Secret from the htpasswd file:
+ kubectl create secret generic registry-auth \
+  --from-file=htpasswd=auth/htpasswd \
+  -n registry
+
+# To confirm the Secret is correctly applied
+# Check the Secret exists:
+ kubectl get secret -n registry registry-auth -o yaml
+
+# VALID SECRETS 
+# Create a docker-registry Secret
+kubectl create secret docker-registry registry-auth \
+  --docker-server=192.168.64.106:5000 \
+  --docker-username=mydockeruser2 \
+  --docker-password=<your-password> \
+  --docker-email=mydockeruser2@test.com \
+  -n kafka
+
+# Delete the existing secret
+kubectl delete secret registry-auth -n kafka
+
+# Recreate with http://
+kubectl create secret docker-registry registry-auth \
+  --docker-server=http://192.168.64.106:5000 \
+  --docker-username=mydockeruser2 \
+  --docker-password=<your-password> \
+  --docker-email=mydockeruser2@test.com \
+  -n kafka
+
+# Verify the Secret
+kubectl get secret registry-auth -n kafka -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
+
+# Use wget with basic authentication to confirm the registry works:
+kubectl run test --image=busybox --restart=Never --rm -it -- sh
+# Inside the pod:
+wget --user=mydockeruser2 --password=<your-password> -O- http://192.168.64.106:5000/v2/
+
+# Deploy the Registry
+kubectl apply -f registry-deployment.yaml
+
+# Inspect the running pod:
+kubectl get pods -n registry
+kubectl describe pod -n registry <registry-pod-name>
+
+# Test authentication by logging in:
+docker login <registry-address>:5000
+
+# Install kafka-connect
+kubectl apply -f kafka-connect.yaml -n kafka
+
+# Verify logs
+kubectl logs my-connect-connect-build -n kafka
