@@ -1,3 +1,6 @@
+# Creates k8s-master with IP 192.168.64.10, 2 CPUs, 4GB memory, and 20GB disk.
+./launch-vm.sh master 192.168.64.10 2 4 20
+
 bash <(curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh) 192.168.64.6
 
 multipass launch --name master --cpus 2 --memory 4G --disk 30G 22.04
@@ -5,6 +8,33 @@ multipass launch --name worker1 --cpus 8 --memory 8G --disk 30G 22.04
 multipass launch --name worker2 --cpus 8 --memory 8G --disk 30G 22.04
 multipass launch --name worker3 --cpus 8 --memory 8G --disk 30G 22.04
 multipass launch --name worker4 --cpus 2 --memory 4G --disk 20G 22.04
+
+# Verify Architecture:
+multipass shell master
+uname -m
+# Expected output:
+aarch64
+
+
+# If you are going to run oracle then you need to use amd64 platform
+multipass launch --name k8s-master --cpus 2 --memory 4G --disk 20G --arch amd64
+multipass launch --name k8s-worker1 --cpus 2 --memory 4G --disk 20G --arch amd64
+multipass launch --name k8s-worker2 --cpus 2 --memory 4G --disk 20G --arch amd64
+
+
+# Install Kubernetes (e.g., via kubeadm):
+sudo apt update
+sudo apt install -y kubeadm kubectl kubelet
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+# Join Workers: SSH into each worker
+multipass shell k8s-worker1
+sudo apt update
+sudo apt install -y kubeadm kubectl kubelet
+sudo <kubeadm join command>
+
 
 # k8s-scripts-public
 Multipass kubernetes
@@ -577,3 +607,72 @@ kubectl apply -f kafka-connect.yaml -n kafka
 
 # Verify logs
 kubectl logs my-connect-connect-build -n kafka
+
+
+kubectl create namespace oracle
+kubectl apply -f oracle-xe-deployment.yaml -n oracle
+kubectl get svc -n default oracle-service
+
+# Verify Your Registry is Accessible
+# Check the service:
+kubectl get svc -n registry registry-service
+
+# Test connectivity:
+curl -v http://192.168.64.106:5000/v2/
+# Output:
+< HTTP/1.1 401 Unauthorized
+< WWW-Authenticate: Basic realm="Registry Realm"
+
+# Log in to Your Private Registry
+docker login 192.168.64.106:5000
+
+# If you don’t remember the credentials:
+kubectl get secret -n registry registry-auth -o jsonpath='{.data.htpasswd}' | base64 -d
+
+# Tag the Oracle XE Image
+docker tag container-registry.oracle.com/database/express:21.3.0-xe 192.168.64.106:5000/oracle-xe:21.3.0
+
+# Verify the tagged image:
+docker images
+
+# Push the Image to Your Registry
+docker push 192.168.64.106:5000/oracle-xe:21.3.0
+
+# Verify the Image in Your Registry
+curl -u <username>:<password> http://192.168.64.106:5000/v2/_catalog
+# Expected output:
+{"repositories":["oracle-xe"]}
+
+# Check tags for the repository:
+curl -u <username>:<password> http://192.168.64.106:5000/v2/oracle-xe/tags/list
+# Expected output:
+{"name":"oracle-xe","tags":["21.3.0"]}
+
+# Test Pulling from Your Registry
+docker rmi 192.168.64.106:5000/oracle-xe:21.3.0
+docker pull 192.168.64.106:5000/oracle-xe:21.3.0
+
+
+Option 2: Share a Secret Across Namespaces
+
+Kubernetes doesn’t natively allow a Secret to be shared across namespaces directly, but you can:
+
+    Copy the Secret: Export it from one namespace and import it into others.
+    Use RBAC: Allow pods in other namespaces to reference a Secret in a central namespace (less common and more complex).
+
+For simplicity, copying the Secret is the most practical approach:
+
+    Export the Existing Secret: If registry-auth in the registry namespace is the correct Secret:
+
+kubectl get secret registry-auth -n registry -o yaml > registry-auth.yaml
+
+Edit registry-auth.yaml to remove namespace: registry and any uid/resourceVersion fields:
+apiVersion: v1
+kind: Secret
+metadata:
+  name: regcred  # Rename to match your Deployment
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: <base64-encoded-value>
+
+kubectl apply -f registry-auth.yaml -n default

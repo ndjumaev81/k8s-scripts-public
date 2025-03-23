@@ -1,0 +1,5 @@
+docker run -d --name oracle-xe \
+  --platform linux/amd64 \
+  -p 1521:1521 \
+  -e ORACLE_PWD=YourTestPassword123 \
+  192.168.64.106:5000/oracle-xe:21.3.0
