@@ -3,7 +3,7 @@ users:
   - name: ubuntu
     sudo: ALL=(ALL) NOPASSWD:ALL
     ssh-authorized-keys:
-      - ssh-rsa ...........  # Your SSH public key
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCY5HVue2yaEs2ckMqAvanfQyuJtjpgagxImJqvz01qzaVjzAhNGynrtmqe/0z49wMXjukcq8mi/K24zJVeS7zOX6dMxL+nlakTCu4cF0psAgYXTv7e1ygf+LTGu5CYMfnfSItYAftiD01pl2M60YoEjW/M5gNBUwcjXWapR3PMX4E+iWbledy3Nz4KZL8o6VrBi8GUFawyqDzW1F/hAh6gZHlWZOCHgzJ6CYdA9G1NonvrScLQ8A0KNAoLfiZb4PM+YU7vlusxquaCdC3hqZeDfbJoNpnFeey7hQGp3bzcu9/Q812X69CvFnSNAP2E239GyOXiMGjOqyv+C2CRtTJ8aAP+fELPEVALi9GhPVQxqPv6+G004h6M/HVZUARG2LB7Kg/5V8JKnfBWET27+fTF7aFgSy2GGdCRB8ZHtDO1melMhMLHdLsFo+83Oc8cowavk0osGORgTS7B5/iLrahVxItG03aP/0tNoEWgbW2wx0GMuT7f5ASCCWezWyi0nAM= nodirdjumaev@Nodirs-MacBook-Pro.local  # Your SSH public key
 network:
   version: 2
   ethernets:

@@ -1,3 +1,30 @@
+# Usage:
+./launch-vm-1.sh 10 2 4 20
+
+
+# Stop the Multipass Daemon:
+
+sudo launchctl stop com.canonical.multipass 2>/dev/null
+sudo launchctl remove com.canonical.multipass 2>/dev/null
+sudo rm -f /Library/LaunchDaemons/com.canonical.multipass.plist
+
+ # Remove the Application:
+sudo rm -rf /Applications/Multipass.app
+
+ # Remove the CLI Binary:
+sudo rm -f /usr/local/bin/multipass
+
+# Clean Up Configuration and Data:
+rm -rf ~/Library/Application\ Support/multipass*
+rm -rf ~/Library/Preferences/multipass*
+rm -rf ~/Library/Caches/multipass*
+rm -rf ~/.multipass
+sudo rm -rf /var/root/Library/Application\ Support/multipassd
+
+# Verify Removal:
+which multipass
+multipass version
+
 # Creates k8s-master with IP 192.168.64.10, 2 CPUs, 4GB memory, and 20GB disk.
 ./launch-vm.sh master 192.168.64.10 2 4 20
 
@@ -676,3 +703,34 @@ data:
   .dockerconfigjson: <base64-encoded-value>
 
 kubectl apply -f registry-auth.yaml -n default
+
+
+# Steps to Install Oracle 19c (ARM64) on Docker Desktop on macOS M2
+# Step 1: Download the ARM64 Binary
+# LINUX.ARM64_1919000_db_home.zip
+# Step 2: Clone Oracle’s Docker Images Repository
+git clone https://github.com/oracle/docker-images.git
+cd docker-images/OracleDatabase/SingleInstance/dockerfiles
+
+# Step 3: Prepare the Files
+# Copy the downloaded LINUX.ARM64_1919000_db_home.zip into the 19.3.0 directory:
+cp /path/to/LINUX.ARM64_1919000_db_home.zip ./19.3.0/
+
+./buildContainerImage.sh -v 19.3.0 -e
+
+# -v 19.3.0: Specifies the base version (19c).
+# -e: Builds the Enterprise Edition (required for ARM64, as XE isn’t available).
+
+# Step 5: Run the Container
+docker run -d -p 1521:1521 -e ORACLE_PWD=your_password oracle/database:19.3.0-ee
+# -e ORACLE_PWD: Sets the password for SYS and SYSTEM users.
+# -p 1521:1521: Maps the Oracle port to your host.
+
+The Oracle Docker Images repository provides defaults unless overridden by environment variables (e.g., ORACLE_SID or ORACLE_PDB):
+
+    SID: The default SID for the Container Database (CDB) is ORCLCDB.
+    Service Name:
+        For the CDB, the default service name is ORCLCDB.
+        For the default Pluggable Database (PDB), the service name is ORCLPDB1.
+
+Since your command doesn’t specify -e ORACLE_SID or -e ORACLE_PDB, these defaults apply.
