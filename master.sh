@@ -1,13 +1,25 @@
 #!/bin/bash
 
-# Check if master IP is provided as an argument
+# Check if master address is provided as an argument
 if [ -z "$1" ]; then
-    echo "Error: Master IP address not provided."
-    echo "Usage: $0 <master-ip>"
+    echo "Error: Master address not provided."
+    echo "Usage: $0 <master-ip-or-hostname>"
     exit 1
 fi
 
-MASTER_IP="$1"
+MASTER_ADDRESS="$1"
+
+# Resolve hostname to IP if not already an IP
+if [[ $MASTER_ADDRESS =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    MASTER_IP="$MASTER_ADDRESS"
+else
+    MASTER_IP=$(dig +short "$MASTER_ADDRESS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+    if [ -z "$MASTER_IP" ]; then
+        echo "Error: Could not resolve hostname $MASTER_ADDRESS to an IP address."
+        exit 1
+    fi
+    echo "Resolved $MASTER_ADDRESS to $MASTER_IP"
+fi
 
 # Validate IP format (basic check)
 if ! [[ $MASTER_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
