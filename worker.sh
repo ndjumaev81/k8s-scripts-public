@@ -7,11 +7,23 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-MASTER_IP="$1"
+WORKER_ADDRESS="$1"
+
+# Resolve hostname to IP if not already an IP
+if [[ $WORKER_ADDRESS =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    WORKER_IP="$WORKER_ADDRESS"
+else
+    WORKER_IP=$(dig +short "$WORKER_ADDRESS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+    if [ -z "$WORKER_IP" ]; then
+        echo "Error: Could not resolve hostname $WORKER_ADDRESS to an IP address."
+        exit 1
+    fi
+    echo "Resolved $WORKER_ADDRESS to $WORKER_IP"
+fi
 
 # Validate IP format (basic check)
-if ! [[ $MASTER_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "Error: Invalid IP address format: $MASTER_IP"
+if ! [[ $WORKER_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: Invalid IP address format: $WORKER_IP"
     exit 1
 fi
 
@@ -58,6 +70,6 @@ echo "Please provide the discovery-token-ca-cert-hash from the master's 'kubeadm
 read -r HASH
 
 # Join the cluster
-sudo kubeadm join "$MASTER_IP:6443" --token "$TOKEN" --discovery-token-ca-cert-hash "$HASH"
+sudo kubeadm join "$WORKER_IP:6443" --token "$TOKEN" --discovery-token-ca-cert-hash "$HASH"
 
 echo "Worker node setup complete."

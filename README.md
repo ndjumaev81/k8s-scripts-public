@@ -30,6 +30,11 @@ multipass version
 
 bash <(curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh) 192.168.64.6
 
+# You can run above command from host via:
+multipass shell k8s-master -c "bash <(curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh) k8s-master.loc"
+
+multipass exec k8s-master -- bash -c "bash <(curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh) k8s-master.loc && echo 'Success' || echo 'Failed'"
+
 multipass launch --name master --cpus 2 --memory 4G --disk 30G 22.04
 multipass launch --name worker1 --cpus 8 --memory 8G --disk 30G 22.04
 multipass launch --name worker2 --cpus 8 --memory 8G --disk 30G 22.04
