@@ -22,7 +22,7 @@ sudo bash -c "cat <<EOF > '$DNSMASQ_CONF'
 server=8.8.8.8
 server=8.8.4.4
 addn-hosts=$DNSMASQ_HOSTS
-listen-address=127.0.0.1
+listen-address=127.0.0.1,192.168.64.1
 port=5353
 bind-interfaces
 no-resolv

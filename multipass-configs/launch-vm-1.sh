@@ -31,3 +31,5 @@ multipass launch --name "$VM_FULL_NAME" \
 
 # Get the DHCP-assigned IP to remove it
 DHCP_IP=$(multipass list | grep "$VM_FULL_NAME" | awk '{print $3}' | head -n 1)
+
+echo "Assigned IP address: $DHCP_IP"
