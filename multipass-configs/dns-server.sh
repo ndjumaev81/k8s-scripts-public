@@ -59,37 +59,32 @@ multipass exec "$DNS_VM" -- sudo systemctl stop systemd-resolved 2>/dev/null
 multipass exec "$DNS_VM" -- sudo systemctl disable systemd-resolved 2>/dev/null
 multipass exec "$DNS_VM" -- sudo rm -f /etc/resolv.conf
 multipass exec "$DNS_VM" -- sudo bash -c "echo 'nameserver $UPSTREAM_DNS' > /etc/resolv.conf"
+
+# Stop CoreDNS if running (to avoid port 53 conflict)
+multipass exec "$DNS_VM" -- sudo systemctl stop coredns 2>/dev/null
 multipass exec "$DNS_VM" -- sudo pkill -9 -f coredns 2>/dev/null
 sleep 2  # Ensure old process terminates
 
-# Get current IPs (required VMs)
+# Get current IPs for all running VMs dynamically
 DNS_IP=$(multipass info "$DNS_VM" | grep IPv4 | awk '{print $2}')
-K8S_MASTER_IP=""
-if multipass info k8s-master &>/dev/null; then
-    K8S_MASTER_IP=$(multipass info k8s-master | grep IPv4 | awk '{print $2}')
-fi
-
-# Check and get IPs for optional workers if running
-WORKER_IPS=()
-WORKER_NAMES=()
-for i in {1..4}; do
-    VM="k8s-worker-$i"
-    if multipass info "$VM" &>/dev/null; then
-        IP=$(multipass info "$VM" | grep IPv4 | awk '{print $2}')
-        WORKER_IPS+=("$IP")
-        WORKER_NAMES+=("$VM")
+ALL_VMS=()
+ALL_IPS=()
+while read -r name state ip _; do
+    if [[ "$state" == "Running" && "$ip" =~ ^192\.168\.64\.[0-9]+$ ]]; then
+        ALL_VMS+=("$name")
+        ALL_IPS+=("$ip")
     fi
-done
+done < <(multipass list | tail -n +2)
 
 # Build CoreDNS hosts block dynamically
-HOSTS_BLOCK="$DNS_IP dns-server.loc"
-if [ -n "$K8S_MASTER_IP" ]; then
-    HOSTS_BLOCK="$K8S_MASTER_IP k8s-master.loc
-        $HOSTS_BLOCK"
-fi
-for i in "${!WORKER_IPS[@]}"; do
-    HOSTS_BLOCK="${WORKER_IPS[$i]} ${WORKER_NAMES[$i]}.loc
-        $HOSTS_BLOCK"
+HOSTS_BLOCK=""
+for i in "${!ALL_VMS[@]}"; do
+    if [ "${ALL_VMS[$i]}" == "$DNS_VM" ]; then
+        HOSTS_BLOCK="$DNS_IP dns-server.loc"
+    else
+        HOSTS_BLOCK="${ALL_IPS[$i]} ${ALL_VMS[$i]}.loc
+$HOSTS_BLOCK"
+    fi
 done
 
 # Update CoreDNS Corefile
@@ -105,8 +100,8 @@ multipass exec "$DNS_VM" -- sudo bash -c "cat > /etc/coredns/Corefile" << EOF
 }
 EOF
 
-# Run CoreDNS manually, suppress output
-if ! multipass exec "$DNS_VM" -- sudo ss -tulnp | grep -q :53; then
+# Ensure CoreDNS systemd service exists
+if ! multipass exec "$DNS_VM" -- sudo test -f /etc/systemd/system/coredns.service; then
     multipass exec "$DNS_VM" -- sudo bash -c "cat > /etc/systemd/system/coredns.service" << EOF
 [Unit]
 Description=CoreDNS DNS Server
@@ -119,49 +114,42 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
-
-    multipass exec "$DNS_VM" -- sudo systemctl daemon-reload
-    multipass exec "$DNS_VM" -- sudo systemctl enable coredns
-    multipass exec "$DNS_VM" -- sudo systemctl start coredns
-else
-    echo "Port 53 still in use. Check with 'multipass exec dns-server -- sudo ss -tulnp | grep :53'."
-    exit 1
 fi
 
-# Configure DNS on k8s-master
-if [ -n "$K8S_MASTER_IP" ]; then
-    multipass exec k8s-master -- sudo systemctl stop systemd-resolved 2>/dev/null
-    multipass exec k8s-master -- sudo systemctl disable systemd-resolved 2>/dev/null
-    multipass exec k8s-master -- sudo rm -f /etc/resolv.conf  # Remove symlink
-    multipass exec k8s-master -- sudo bash -c "echo 'nameserver $DNS_IP' > /etc/resolv.conf"
-fi
+# Start CoreDNS
+multipass exec "$DNS_VM" -- sudo systemctl daemon-reload
+multipass exec "$DNS_VM" -- sudo systemctl enable coredns
+multipass exec "$DNS_VM" -- sudo systemctl start coredns
 
-# Configure DNS on workers
-for VM in "${WORKER_NAMES[@]}"; do
-    multipass exec "$VM" -- sudo systemctl stop systemd-resolved 2>/dev/null
-    multipass exec "$VM" -- sudo systemctl disable systemd-resolved 2>/dev/null
-    multipass exec "$VM" -- sudo rm -f /etc/resolv.conf  # Remove symlink
-    multipass exec "$VM" -- sudo bash -c "echo 'nameserver $DNS_IP' > /etc/resolv.conf"
+# Configure DNS on all VMs except dns-server
+for vm in "${ALL_VMS[@]}"; do
+    if [ "$vm" != "$DNS_VM" ]; then
+        multipass exec "$vm" -- sudo systemctl stop systemd-resolved 2>/dev/null
+        multipass exec "$vm" -- sudo systemctl disable systemd-resolved 2>/dev/null
+        multipass exec "$vm" -- sudo rm -f /etc/resolv.conf  # Remove symlink
+        multipass exec "$vm" -- sudo bash -c "echo 'nameserver $DNS_IP' > /etc/resolv.conf"
+    fi
 done
 
 # Update /etc/hosts on host: remove only lines with #multipass, append new entries with #multipass
 sudo sed -i '' '/#multipass$/d' "$HOSTS"
-multipass list | tail -n +2 | while read -r name state ip _; do
-    if [[ "$state" == "Running" && "$ip" =~ ^192\.168\.64\.[0-9]+$ ]]; then
-        echo "$ip $name.loc #multipass" | sudo tee -a "$HOSTS"
-    fi
+for i in "${!ALL_VMS[@]}"; do
+    echo "${ALL_IPS[$i]} ${ALL_VMS[$i]}.loc #multipass" | sudo tee -a "$HOSTS"
 done
 
 # Debug CoreDNS
-echo "Current IPs: DNS=$DNS_IP, Master=$K8S_MASTER_IP"
+echo "Current IPs: DNS=$DNS_IP"
+echo "All VMs and IPs: ${ALL_VMS[@]} -> ${ALL_IPS[@]}"
 echo "Using upstream DNS: $UPSTREAM_DNS"
 echo "CoreDNS Corefile:"
 multipass exec "$DNS_VM" -- cat /etc/coredns/Corefile
-echo "Verifying resolution from k8s-master:"
-if [ -n "$K8S_MASTER_IP" ]; then
-    multipass exec k8s-master -- nslookup dns-server.loc $DNS_IP
-    multipass exec k8s-master -- ping -c 4 google.com
-fi
+echo "Verifying resolution from k8s-master (if exists):"
+for vm in "${ALL_VMS[@]}"; do
+    if [ "$vm" == "k8s-master" ]; then
+        multipass exec k8s-master -- nslookup dns-server.loc $DNS_IP
+        multipass exec k8s-master -- ping -c 4 google.com
+    fi
+done
 
 echo "Host /etc/hosts:"
 cat "$HOSTS"

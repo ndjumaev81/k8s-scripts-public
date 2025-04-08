@@ -20,4 +20,7 @@ sudo apt update && sudo apt upgrade
 ./dns-server.sh
 
 # Install kubernetes cluster master node via script file:
-curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh) k8s-master.loc
+curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh | bash -s -- k8s-master.loc
+# Or from your host
+multipass exec k8s-master -- bash -c "bash <(curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh | bash -s -- k8s-master.loc)"
+
