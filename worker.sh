@@ -1,13 +1,15 @@
 #!/bin/bash
 
-# Check if master IP is provided as an argument
-if [ -z "$1" ]; then
-    echo "Error: Master IP address not provided."
-    echo "Usage: $0 <master-ip>"
+# Check if all arguments are provided
+if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
+    echo "Error: Address, token, and discovery token hash not provided."
+    echo "Usage: $0 <worker-address> <token> <discovery-token-ca-cert-hash>"
     exit 1
 fi
 
 WORKER_ADDRESS="$1"
+TOKEN="$2"
+HASH="$3"
 
 # Resolve hostname to IP if not already an IP
 if [[ $WORKER_ADDRESS =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -69,10 +71,10 @@ sudo swapoff -a
 sudo sed -i '/swap/d' /etc/fstab
 
 # Prompt for token and discovery token hash from master
-echo "Please provide the token from the master's 'kubeadm init' output (e.g., 0ab9ad.lbhe66pv4yslcsti):"
-read -r TOKEN
-echo "Please provide the discovery-token-ca-cert-hash from the master's 'kubeadm init' output (e.g., sha256:4086e0b...):"
-read -r HASH
+# echo "Please provide the token from the master's 'kubeadm init' output (e.g., 0ab9ad.lbhe66pv4yslcsti):"
+# read -r TOKEN
+# echo "Please provide the discovery-token-ca-cert-hash from the master's 'kubeadm init' output (e.g., sha256:4086e0b...):"
+# read -r HASH
 
 # Join the cluster
 sudo kubeadm join "$WORKER_IP:6443" --token "$TOKEN" --discovery-token-ca-cert-hash "$HASH"

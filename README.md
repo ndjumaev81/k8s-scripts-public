@@ -40,6 +40,10 @@ multipass launch --name worker2 --cpus 8 --memory 8G --disk 30G 22.04
 multipass launch --name worker3 --cpus 8 --memory 8G --disk 30G 22.04
 multipass launch --name worker4 --cpus 2 --memory 4G --disk 20G 22.04
 
+# Update the server address
+MASTER_IP=$(multipass info k8s-master | grep IPv4 | awk '{print $2}')
+sed -i "s|server: https://.*:6443|server: https://$MASTER_IP:6443|" /tmp/k8s-master-config
+
 # Verify Architecture:
 multipass shell master
 uname -m

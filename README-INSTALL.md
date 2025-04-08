@@ -21,6 +21,28 @@ sudo apt update && sudo apt upgrade
 
 # Install kubernetes cluster master node via script file:
 curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh | bash -s -- k8s-master.loc
-# Or from your host
-multipass exec k8s-master -- bash -c "bash <(curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh | bash -s -- k8s-master.loc)"
 
+# If for some reason you have to run script again, don't forget to reset cluster
+sudo kubeadm reset -f
+
+# Copy admin config from kubernetes master node
+multipass exec k8s-master -- sudo cat /etc/kubernetes/admin.conf > /tmp/k8s-master-config
+
+# This command will replace your ~/.kube/config with new configuration
+sudo mv /tmp/k8s-master-config ~/.kube/config
+
+# Or you could merge this config into your ~/.kube/config to preserve exist configurations
+export KUBECONFIG=~/.kube/config:/tmp/k8s-master-config
+kubectl config view --flatten > ~/.kube/config.new
+sudo mv ~/.kube/config.new ~/.kube/config
+unset KUBECONFIG
+
+# Verify the cluster is accessible:
+kubectl get nodes
+
+# If you didn’t save it:
+# Generate a new token on the master VM (Replace master with your master VM’s name if different.):
+multipass exec k8s-master -- kubeadm token create --print-join-command
+
+# Install kubernetes on worker machines
+curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/worker.sh | bash -s -- k8s-worker-1.loc <token> <hash>
