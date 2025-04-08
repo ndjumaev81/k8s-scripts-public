@@ -7,25 +7,25 @@ if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
     exit 1
 fi
 
-WORKER_ADDRESS="$1"
+MASTER_ADDRESS="$1"
 TOKEN="$2"
 HASH="$3"
 
 # Resolve hostname to IP if not already an IP
-if [[ $WORKER_ADDRESS =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    WORKER_IP="$WORKER_ADDRESS"
+if [[ $MASTER_ADDRESS =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    MASTER_IP="$MASTER_ADDRESS"
 else
-    WORKER_IP=$(dig +short "$WORKER_ADDRESS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
-    if [ -z "$WORKER_IP" ]; then
-        echo "Error: Could not resolve hostname $WORKER_ADDRESS to an IP address."
+    MASTER_IP=$(dig +short "$MASTER_ADDRESS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+    if [ -z "$MASTER_IP" ]; then
+        echo "Error: Could not resolve hostname $MASTER_ADDRESS to an IP address."
         exit 1
     fi
-    echo "Resolved $WORKER_ADDRESS to $WORKER_IP"
+    echo "Resolved $MASTER_ADDRESS to $MASTER_IP"
 fi
 
 # Validate IP format (basic check)
-if ! [[ $WORKER_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "Error: Invalid IP address format: $WORKER_IP"
+if ! [[ $MASTER_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: Invalid IP address format: $MASTER_IP"
     exit 1
 fi
 
@@ -70,13 +70,7 @@ sudo sysctl --system
 sudo swapoff -a
 sudo sed -i '/swap/d' /etc/fstab
 
-# Prompt for token and discovery token hash from master
-# echo "Please provide the token from the master's 'kubeadm init' output (e.g., 0ab9ad.lbhe66pv4yslcsti):"
-# read -r TOKEN
-# echo "Please provide the discovery-token-ca-cert-hash from the master's 'kubeadm init' output (e.g., sha256:4086e0b...):"
-# read -r HASH
-
 # Join the cluster
-sudo kubeadm join "$WORKER_IP:6443" --token "$TOKEN" --discovery-token-ca-cert-hash "$HASH"
+sudo kubeadm join "$MASTER_IP:6443" --token "$TOKEN" --discovery-token-ca-cert-hash "$HASH"
 
 echo "Worker node setup complete."

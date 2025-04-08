@@ -45,4 +45,4 @@ kubectl get nodes
 multipass exec k8s-master -- kubeadm token create --print-join-command
 
 # Install kubernetes on worker machines
-curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/worker.sh | bash -s -- k8s-worker-1.loc <token> <hash>
+curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/worker.sh | bash -s -- k8s-master.loc <token> <hash>
