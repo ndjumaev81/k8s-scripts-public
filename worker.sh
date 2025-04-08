@@ -35,8 +35,13 @@ sudo apt install -y apt-transport-https ca-certificates curl gnupg containerd
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+# Set the correct sandbox image for Kubernetes 1.28
+sudo sed -i 's|sandbox_image = "registry.k8s.io/pause:.*"|sandbox_image = "registry.k8s.io/pause:3.9"|' /etc/containerd/config.toml
 sudo systemctl restart containerd
 sudo systemctl enable containerd
+
+# Pull the sandbox image explicitly
+sudo crictl pull registry.k8s.io/pause:3.9
 
 # Install Kubernetes packages
 curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
