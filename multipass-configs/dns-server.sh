@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Commands to verify that CoreDns installed and running
+# Check if CoreDNS is running:
+#ps aux | grep coredns
+# Test DNS resolution locally:
+#nslookup google.com 127.0.0.1
+
 # Variables
 DNS_VM="dns-server"
 HOSTS="/etc/hosts"
@@ -101,7 +107,22 @@ EOF
 
 # Run CoreDNS manually, suppress output
 if ! multipass exec "$DNS_VM" -- sudo ss -tulnp | grep -q :53; then
-    multipass exec "$DNS_VM" -- sudo nohup /usr/local/bin/coredns -conf /etc/coredns/Corefile >/dev/null 2>&1 &
+    multipass exec "$DNS_VM" -- sudo bash -c "cat > /etc/systemd/system/coredns.service" << EOF
+[Unit]
+Description=CoreDNS DNS Server
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/coredns -conf /etc/coredns/Corefile
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    multipass exec "$DNS_VM" -- sudo systemctl daemon-reload
+    multipass exec "$DNS_VM" -- sudo systemctl enable coredns
+    multipass exec "$DNS_VM" -- sudo systemctl start coredns
 else
     echo "Port 53 still in use. Check with 'multipass exec dns-server -- sudo ss -tulnp | grep :53'."
     exit 1

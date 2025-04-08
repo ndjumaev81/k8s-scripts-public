@@ -3,7 +3,6 @@
 
 
 # Stop the Multipass Daemon:
-
 sudo launchctl stop com.canonical.multipass 2>/dev/null
 sudo launchctl remove com.canonical.multipass 2>/dev/null
 sudo rm -f /Library/LaunchDaemons/com.canonical.multipass.plist
@@ -46,13 +45,6 @@ multipass shell master
 uname -m
 # Expected output:
 aarch64
-
-
-# If you are going to run oracle then you need to use amd64 platform
-multipass launch --name k8s-master --cpus 2 --memory 4G --disk 20G --arch amd64
-multipass launch --name k8s-worker1 --cpus 2 --memory 4G --disk 20G --arch amd64
-multipass launch --name k8s-worker2 --cpus 2 --memory 4G --disk 20G --arch amd64
-
 
 # Install Kubernetes (e.g., via kubeadm):
 sudo apt update
