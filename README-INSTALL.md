@@ -20,7 +20,7 @@ sudo apt update && sudo apt upgrade
 ./dns-server.sh
 
 # Install kubernetes cluster master node via script file:
-curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/master.sh | bash -s -- k8s-master.loc
+curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/scripts/master.sh | bash -s -- k8s-master.loc
 
 # If for some reason you have to run script again, don't forget to reset cluster
 sudo kubeadm reset -f
@@ -37,19 +37,70 @@ kubectl config view --flatten > ~/.kube/config.new
 sudo mv ~/.kube/config.new ~/.kube/config
 unset KUBECONFIG
 
+# Verify configs
+kubectl config view
+
 # Verify the cluster is accessible:
 kubectl get nodes
+
+# List contexts:
+kubectl config get-contexts
+
+# Switch contexts:
+kubectl config use-context kubernetes-admin@kubernetes
+
+# Set a Specific Context as Default
+# After merging or using a single file, set the default context:
+kubectl config set-context --current --namespace=default
+
+# Managing Multiple Clusters Long-Term
+# Rename Contexts: If context names overlap, edit ~/.kube/config or use:
+kubectl config rename-context kubernetes-admin@kubernetes multipass-cluster
 
 # If you didn’t save it:
 # Generate a new token on the master VM (Replace master with your master VM’s name if different.):
 multipass exec k8s-master -- kubeadm token create --print-join-command
 
 # Install kubernetes on worker machines
-curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/worker.sh | bash -s -- k8s-master.loc <token> <hash>
+curl -s https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/scripts/worker.sh | bash -s -- k8s-master.loc <token> <hash>
 
 # Verify that worker node visible in cluster
 kubectl get nodes
+kubectl get pods -o wide --all-namespaces
 
-# Verify worker node
+# Verify worker node if needed
 kubectl describe node k8s-worker-1
 
+# Install metallb
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+
+# This deploys the MetalLB controller and speaker pods in the metallb-system namespace:
+kubectl apply -f https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/yaml-scripts/metallb-config-fixed-and-auto.yaml
+
+# Verify logs of MetalLb
+kubectl logs -n metallb-system -l app=metallb
+
+# Host NFS setup
+# Enable NFS
+./setup-nfs-macos-host.sh <username>
+
+# Verify NFS exports:
+showmount -e
+
+# From your Mac, confirm the NFS server is running:
+sudo nfsd status
+
+# Required step on multipass vms (master and workers):
+sudo apt update
+sudo apt install -y nfs-common
+
+# OPTIONAL step, to test NFS service
+sudo mkdir -p /mnt/nfs
+sudo mount -t nfs 192.168.64.1:/Users/<username>/nfs-share /mnt/nfs
+ls /mnt/nfs
+
+# Unmount test mount
+sudo umount /mnt/nfs
+
+# Create nfs-provisioner resource in kubernetes via script
+./scripts/deploy-nfs-provisioner.sh 192.168.64.1 /Users/<username>/nfs-share
