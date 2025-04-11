@@ -12,8 +12,13 @@ HOSTS="/etc/hosts"
 
 # Fetch DNS from active macOS network interface, default to 8.8.8.8
 UPSTREAM_DNS=$(scutil --dns | grep 'nameserver\[0\]' | head -n 1 | awk '{print $3}')
-if [ -z "$UPSTREAM_DNS" ]; then
-    UPSTREAM_DNS="8.8.8.8"
+if [[ -z "$UPSTREAM_DNS" || "$UPSTREAM_DNS" =~ ^fe80:: ]]; then
+    # Check if LAN DNS is reachable
+    if ping -c 1 192.168.9.101 &>/dev/null; then
+        UPSTREAM_DNS="192.168.9.101"
+    else
+        UPSTREAM_DNS="8.8.8.8"
+    fi
 fi
 
 echo "DNS servers: $UPSTREAM_DNS"
@@ -58,7 +63,8 @@ sleep 5
 multipass exec "$DNS_VM" -- sudo systemctl stop systemd-resolved 2>/dev/null
 multipass exec "$DNS_VM" -- sudo systemctl disable systemd-resolved 2>/dev/null
 multipass exec "$DNS_VM" -- sudo rm -f /etc/resolv.conf
-multipass exec "$DNS_VM" -- sudo bash -c "echo 'nameserver $UPSTREAM_DNS' > /etc/resolv.conf"
+#multipass exec "$DNS_VM" -- sudo bash -c "echo 'nameserver $UPSTREAM_DNS' > /etc/resolv.conf"
+multipass exec "$DNS_VM" -- sudo bash -c "echo 'nameserver 127.0.0.1' > /etc/resolv.conf"
 
 # Stop CoreDNS if running (to avoid port 53 conflict)
 multipass exec "$DNS_VM" -- sudo systemctl stop coredns 2>/dev/null

@@ -10,7 +10,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: nfs-storage-retain
+  storageClassName: nfs-p999-retain
 
 ---
 # PostgreSQL Deployment
@@ -29,8 +29,6 @@ spec:
       labels:
         app: postgres
     spec:
-      securityContext:
-        fsGroup: 999  # Matches postgres user's GID
       containers:
       - name: postgres
         image: postgres:16
