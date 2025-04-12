@@ -61,6 +61,12 @@ done
 
 # Install workers
 for node in k8s-worker-1 k8s-worker-2 k8s-worker-3 k8s-worker-4; do
+    echo "Checking if $node is already joined..."
+    if multipass exec $node -- sudo test -f /etc/kubernetes/kubelet.conf >/dev/null 2>&1; then
+        echo "Skipping $node: Already joined the cluster"
+        continue
+    fi
+
     echo "Running worker setup on $node..."
     multipass exec $node -- sudo bash -c "curl -s https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/refs/heads/main/scripts/setup_single_kube_worker.sh > /tmp/worker.sh"
     if [ $? -ne 0 ]; then
