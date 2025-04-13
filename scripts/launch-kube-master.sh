@@ -70,4 +70,30 @@ if [ $? -ne 0 ]; then
 fi
 
 multipass exec k8s-master -- sudo rm /tmp/master.sh
+
+# Copy kubeconfig to host
+multipass exec k8s-master -- sudo cat /etc/kubernetes/admin.conf > /tmp/k8s-master-config
+mkdir -p ~/.kube
+sudo mv /tmp/k8s-master-config ~/.kube/config
+
+# Check if kubectl is installed
+if ! command -v kubectl >/dev/null 2>&1; then
+    echo "kubectl not installed. Installing..."
+    curl -LO "https://dl.k8s.io/release/v1.28.7/bin/linux/amd64/kubectl"
+    chmod +x kubectl
+    sudo mv kubectl /usr/local/bin/
+    if ! command -v kubectl >/dev/null 2>&1; then
+        echo "Error: kubectl installation failed"
+        exit 1
+    fi
+    echo "kubectl installed successfully"
+fi
+
+# Verify and configure kubectl
+kubectl get nodes
+kubectl config use-context kubernetes-admin@kubernetes
+kubectl config set-context --current --namespace=default
+kubectl config rename-context kubernetes-admin@kubernetes multipass-cluster
+kubectl config get-contexts
+
 echo "Master node setup complete."
