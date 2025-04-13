@@ -14,6 +14,7 @@ fi
 
 # Variables
 GITHUB_USERNAME="$1"
+WORKER_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/setup_single_kube_worker.sh"
 
 # Validate nodes exist
 for node in k8s-master k8s-worker-1 k8s-worker-2 k8s-worker-3 k8s-worker-4; do
@@ -41,8 +42,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # Parse token and hash
-TOKEN=$(echo "$join_output" | grep -oE '[[:alnum:]]+\.[[:alnum:]]+' | head -n1)
-HASH=$(echo "$join_output" | grep -oE 'sha256:[a-f0-9]+' | head -n1)
+TOKEN=$(echo "$join_output" | grep -oE '[a-z0-9]{6}\.[a-z0-9]{16}' | head -n1)
+HASH=$(echo "$join_output" | grep -oE 'sha256:[a-f0-9]{64}' | head -n1)
 if [ -z "$TOKEN" ] || [ -z "$HASH" ]; then
     echo "Error: Could not parse token or hash from output: $join_output"
     exit 1
@@ -68,9 +69,17 @@ for node in k8s-worker-1 k8s-worker-2 k8s-worker-3 k8s-worker-4; do
         continue
     fi
     echo "Running worker setup on $node..."
-    multipass exec "$node" -- sudo bash -c "curl -s https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/refs/heads/main/scripts/setup_single_kube_worker.sh > /tmp/worker.sh"
+    echo "Fetching worker.sh from $WORKER_SCRIPT_URL..."
+    multipass exec "$node" -- sudo bash -c "curl -s -f '$WORKER_SCRIPT_URL' > /tmp/worker.sh"
     if [ $? -ne 0 ]; then
-        echo "Error: Failed to download worker.sh on $node"
+        echo "Error: Failed to download worker.sh from $WORKER_SCRIPT_URL on $node"
+        exit 1
+    fi
+    # Validate worker.sh content
+    multipass exec "$node" -- sudo bash -c "grep -q '^#!/bin/bash' /tmp/worker.sh"
+    if [ $? -ne 0 ]; then
+        echo "Error: Downloaded worker.sh is invalid (not a bash script) on $node"
+        multipass exec "$node" -- sudo cat /tmp/worker.sh
         exit 1
     fi
     multipass exec "$node" -- sudo bash /tmp/worker.sh k8s-master.loc "$TOKEN" "$HASH" 2>&1 | tee "/tmp/$node-worker-$(date +%s).log"
