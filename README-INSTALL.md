@@ -132,3 +132,22 @@ kubectl apply -f kafka-strimzi-cluster.yaml -n kafka
 
 # Install Metrics Server:
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+
+
+
+
+
+
+
+Verification
+
+To test idempotency:
+
+    Run ./setup-launch-kube-master.sh <github-username>
+    Interrupt at various points (e.g., after NFS, during master setup, after Metrics Server).
+    Rerun and check:
+        Skipped steps are logged (e.g., “NFS exports already configured”).
+        No errors from kubectl config or kubectl apply.
+        ~/.kube/config remains intact.
+        All components (Metrics Server, MetalLB, NFS provisioner) are deployed.
