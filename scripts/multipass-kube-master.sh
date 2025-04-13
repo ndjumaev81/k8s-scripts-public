@@ -1,13 +1,14 @@
 #!/bin/bash
 
-# Check if master address is provided as an argument
-if [ -z "$1" ]; then
-    echo "Error: Master address not provided."
-    echo "Usage: $0 <master-ip-or-hostname>"
+# Check if master address and username are provided
+if [ -z "$1" ] || [ -z "$2" ]; then
+    echo "Error: Master address or username not provided."
+    echo "Usage: $0 <master-ip-or-hostname> <host-username>"
     exit 1
 fi
 
 MASTER_ADDRESS="$1"
+HOST_USERNAME="$2"
 
 # Resolve hostname to IP if not already an IP
 if [[ $MASTER_ADDRESS =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -30,6 +31,36 @@ fi
 # Update and install prerequisites
 sudo apt update
 sudo apt install -y apt-transport-https ca-certificates curl gnupg containerd
+
+# Install NFS client
+echo "Installing NFS client..."
+sudo apt install -y nfs-common
+if ! dpkg -l | grep -q nfs-common; then
+    echo "Error: nfs-common installation failed"
+    exit 1
+fi
+echo "Verifying no NFS server services are running..."
+if systemctl --type=service | grep -q "nfs-kernel-server"; then
+    echo "Error: NFS server service (nfs-kernel-server) found running"
+    systemctl --type=service | grep nfs
+    exit 1
+fi
+if systemctl --type=service | grep -q "nfs"; then
+    echo "Warning: NFS-related services found, but not nfs-kernel-server. Proceeding..."
+    systemctl --type=service | grep nfs
+fi
+
+# Test NFS mount
+echo "Testing NFS mount..."
+sudo mkdir -p /mnt/nfs
+sudo mount -t nfs 192.168.64.1:/Users/$HOST_USERNAME/nfs-share/p501 /mnt/nfs
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to mount NFS share"
+    exit 1
+fi
+ls /mnt/nfs
+sudo umount /mnt/nfs
+echo "Test mount [/mnt/nfs] unmounted."
 
 # Configure containerd
 sudo mkdir -p /etc/containerd

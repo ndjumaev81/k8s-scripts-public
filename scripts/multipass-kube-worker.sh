@@ -33,6 +33,36 @@ fi
 sudo apt update
 sudo apt install -y apt-transport-https ca-certificates curl gnupg containerd
 
+# Install NFS client
+echo "Installing NFS client..."
+sudo apt install -y nfs-common
+if ! dpkg -l | grep -q nfs-common; then
+    echo "Error: nfs-common installation failed"
+    exit 1
+fi
+echo "Verifying no NFS server services are running..."
+if systemctl --type=service | grep -q "nfs-kernel-server"; then
+    echo "Error: NFS server service (nfs-kernel-server) found running"
+    systemctl --type=service | grep nfs
+    exit 1
+fi
+if systemctl --type=service | grep -q "nfs"; then
+    echo "Warning: NFS-related services found, but not nfs-kernel-server. Proceeding..."
+    systemctl --type=service | grep nfs
+fi
+
+# Test NFS mount
+echo "Testing NFS mount..."
+sudo mkdir -p /mnt/nfs
+sudo mount -t nfs 192.168.64.1:/Users/$HOST_USERNAME/nfs-share/p501 /mnt/nfs
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to mount NFS share"
+    exit 1
+fi
+ls /mnt/nfs
+sudo umount /mnt/nfs
+echo "Test mount [/mnt/nfs] unmounted."
+
 # Configure containerd
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
