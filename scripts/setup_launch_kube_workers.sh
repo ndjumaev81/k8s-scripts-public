@@ -14,7 +14,7 @@ fi
 
 # Variables
 GITHUB_USERNAME="$1"
-WORKER_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/setup_single_kube_worker.sh"
+WORKER_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/multipass_kube_worker.sh"
 
 # Validate nodes exist
 for node in k8s-master k8s-worker-1 k8s-worker-2 k8s-worker-3 k8s-worker-4; do
