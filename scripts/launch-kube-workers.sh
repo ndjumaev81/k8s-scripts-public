@@ -16,15 +16,28 @@ fi
 GITHUB_USERNAME="$1"
 WORKER_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/multipass-kube-worker.sh"
 
-# Validate nodes exist
-for node in k8s-master k8s-worker-1 k8s-worker-2 k8s-worker-3 k8s-worker-4; do
+# Validate k8s-master exists
+if ! multipass info k8s-master >/dev/null 2>&1; then
+    echo "Error: k8s-master does not exist"
+    exit 1
+fi
+
+# Fetch worker nodes dynamically
+worker_nodes=$(multipass list | grep 'k8s-worker-' | grep Running | awk '{print $1}')
+if [ -z "$worker_nodes" ]; then
+    echo "Error: No k8s-worker-* nodes found"
+    exit 1
+fi
+
+# Validate worker nodes exist
+for node in $worker_nodes; do
     if ! multipass info "$node" >/dev/null 2>&1; then
         echo "Error: Node $node does not exist"
         exit 1
     fi
 done
 
-# Fetch k8s-master IP from multipass
+# Fetch k8s-master IP
 echo "Fetching k8s-master IP..."
 master_ip=$(multipass list | grep k8s-master | grep Running | grep -oE '192\.168\.[0-9]+\.[0-9]+' | head -n1)
 if [ -z "$master_ip" ]; then
@@ -51,10 +64,9 @@ fi
 echo "Using token: $TOKEN, hash: $HASH"
 
 # Sync clocks for workers
-for node in k8s-master k8s-worker-1 k8s-worker-2 k8s-worker-3 k8s-worker-4; do
-    # Sync clock
+for node in $worker_nodes; do
     echo "Syncing clock on $node..."
-    multipass exec $node -- sudo bash -c "apt update && apt install -y ntpdate && sudo apt upgrade && ntpdate pool.ntp.org"
+    multipass exec "$node" -- sudo bash -c "apt update && apt install -y ntpdate && ntpdate pool.ntp.org"
     if [ $? -ne 0 ]; then
         echo "Error: Clock sync failed on $node"
         exit 1
@@ -62,7 +74,7 @@ for node in k8s-master k8s-worker-1 k8s-worker-2 k8s-worker-3 k8s-worker-4; do
 done
 
 # Install workers
-for node in k8s-worker-1 k8s-worker-2 k8s-worker-3 k8s-worker-4; do
+for node in $worker_nodes; do
     echo "Checking if $node is already joined..."
     if multipass exec "$node" -- sudo test -f /etc/kubernetes/kubelet.conf >/dev/null 2>&1; then
         echo "Skipping $node: Already joined the cluster"
