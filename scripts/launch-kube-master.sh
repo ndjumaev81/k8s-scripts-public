@@ -96,4 +96,69 @@ kubectl config set-context --current --namespace=default
 kubectl config rename-context kubernetes-admin@kubernetes multipass-cluster
 kubectl config get-contexts
 
+# Deploy and configure Metrics Server
+echo "Deploying Metrics Server..."
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to apply Metrics Server manifest"
+    exit 1
+fi
+
+echo "Configuring Metrics Server with --kubelet-insecure-tls..."
+kubectl patch deployment metrics-server -n kube-system --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to patch Metrics Server deployment"
+    exit 1
+fi
+
+echo "Verifying Metrics Server pod..."
+kubectl get pods -n kube-system | grep metrics-server
+if [ $? -ne 0 ]; then
+    echo "Error: Metrics Server pod not found"
+    exit 1
+fi
+
+echo "Testing Metrics Server..."
+kubectl top nodes
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to run kubectl top nodes"
+    exit 1
+fi
+
+# Deploy and configure MetalLB
+echo "Deploying MetalLB..."
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to apply MetalLB manifest"
+    exit 1
+fi
+
+echo "Applying MetalLB configuration..."
+kubectl apply -f https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/yaml-scripts/metallb-config-fixed-and-auto.yaml
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to apply MetalLB configuration"
+    exit 1
+fi
+
+echo "Waiting for MetalLB pods to be ready (up to 60 seconds)..."
+for attempt in {1..6}; do
+    if kubectl get pods -n metallb-system -l app=metallb -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | grep -q "^Running$"; then
+        echo "MetalLB pods are ready"
+        break
+    fi
+    if [ $attempt -eq 6 ]; then
+        echo "Error: MetalLB pods not ready after 60 seconds"
+        exit 1
+    fi
+    echo "Attempt $attempt/6: Pods not ready, waiting 10 seconds..."
+    sleep 10
+done
+
+echo "Verifying MetalLB pods..."
+kubectl get pods -n metallb-system -l app=metallb
+if [ $? -ne 0 ]; then
+    echo "Error: MetalLB pods not found"
+    exit 1
+fi
+
 echo "Master node setup complete."

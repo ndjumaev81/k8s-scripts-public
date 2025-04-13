@@ -48,7 +48,7 @@ echo "k8s-master IP: $master_ip"
 
 # Fetch token and hash from k8s-master
 echo "Generating join token on k8s-master..."
-join_output=$(multipass exec k8s-master -- kubeadm token create --print-join-command 2>&1)
+join_output=$(multipass exec k8s-master -- sudo kubeadm token create --print-join-command 2>&1)
 if [ $? -ne 0 ]; then
     echo "Error: Failed to generate join token. Output: $join_output"
     exit 1
