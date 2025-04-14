@@ -88,35 +88,31 @@ fi
 # Check if k8s-master is already configured
 echo "Checking if k8s-master is already configured..."
 if multipass exec k8s-master -- sudo test -f /etc/kubernetes/admin.conf >/dev/null 2>&1; then
-    echo "k8s-master already configured, skipping setup"
-    exit 0
-fi
+    echo "k8s-master Kubernetes setup detected"
+else
+    echo "Running master setup on k8s-master..."
+    echo "Fetching multipass-kube-master.sh from $MASTER_SCRIPT_URL..."
+    multipass exec k8s-master -- sudo bash -c "curl -s -f '$MASTER_SCRIPT_URL' > /tmp/master.sh"
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to download multipass-kube-master.sh"
+        exit 1
+    fi
 
-# Run master setup
-echo "Running master setup on k8s-master..."
-echo "Fetching multipass-kube-master.sh from $MASTER_SCRIPT_URL..."
-multipass exec k8s-master -- sudo bash -c "curl -s -f '$MASTER_SCRIPT_URL' > /tmp/master.sh"
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to download multipass-kube-master.sh"
-    exit 1
-fi
+    multipass exec k8s-master -- sudo bash -c "grep -q '^#!/bin/bash' /tmp/master.sh"
+    if [ $? -ne 0 ]; then
+        echo "Error: Downloaded multipass-kube-master.sh is invalid"
+        multipass exec k8s-master -- sudo cat /tmp/master.sh
+        exit 1
+    fi
 
-# Validate script content
-multipass exec k8s-master -- sudo bash -c "grep -q '^#!/bin/bash' /tmp/master.sh"
-if [ $? -ne 0 ]; then
-    echo "Error: Downloaded multipass-kube-master.sh is invalid"
-    multipass exec k8s-master -- sudo cat /tmp/master.sh
-    exit 1
-fi
+    multipass exec k8s-master -- sudo bash /tmp/master.sh "$MASTER_IP" "$HOST_USERNAME" 2>&1 | tee "/tmp/k8s-master-$(date +%s).log"
+    if [ $? -ne 0 ]; then
+        echo "Error: Master setup failed. Check /tmp/k8s-master-*.log"
+        exit 1
+    fi
 
-# Execute master script
-multipass exec k8s-master -- sudo bash /tmp/master.sh "$MASTER_IP" 2>&1 | tee "/tmp/k8s-master-$(date +%s).log"
-if [ $? -ne 0 ]; then
-    echo "Error: Master setup failed. Check /tmp/k8s-master-*.log"
-    exit 1
+    multipass exec k8s-master -- sudo rm /tmp/master.sh
 fi
-
-multipass exec k8s-master -- sudo rm /tmp/master.sh
 
 # Copy kubeconfig to host
 multipass exec k8s-master -- sudo cat /etc/kubernetes/admin.conf > /tmp/k8s-master-config
