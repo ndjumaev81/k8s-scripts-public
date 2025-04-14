@@ -157,25 +157,37 @@ if kubectl get deployment controller -n metallb-system >/dev/null 2>&1; then
     # Check if memberlist volume exists
     if kubectl get daemonset speaker -n metallb-system -o jsonpath='{.spec.template.spec.volumes[?(@.name=="memberlist")].name}' | grep -q "memberlist"; then
         echo "Removing memberlist volume from speaker DaemonSet..."
-        # Fetch the index of the memberlist volume
-        volume_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.volumes[*]}{.name}{"\n"}{end}' | grep -n "memberlist" | cut -d: -f1)
-        if [ -n "$volume_index" ]; then
-            volume_index=$((volume_index-1))  # Adjust for 0-based indexing
-            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/volumes/$volume_index\"}, {\"op\": \"remove\", \"path\": \"/spec/template/spec/containers/0/volumeMounts/[?(@.name==\\\"memberlist\\\")]\"}]"
+        kubectl patch daemonset speaker -n metallb-system --type='strategic' -p='{"spec":{"template":{"spec":{"volumes":[{"name":"memberlist","$patch":"delete"}]}}}}'
+        if [ $? -ne 0 ]; then
+            echo "Warning: Failed to remove memberlist volume, attempting container volumeMounts patch..."
+            kubectl patch daemonset speaker -n metallb-system --type='strategic' -p='{"spec":{"template":{"spec":{"containers":[{"name":"speaker","volumeMounts":[{"name":"memberlist","$patch":"delete"}]}]}}}}'
             if [ $? -ne 0 ]; then
-                echo "Warning: Failed to patch speaker DaemonSet to remove memberlist volume, continuing..."
-            else
-                echo "Restarting speaker DaemonSet to apply changes..."
-                kubectl rollout restart daemonset speaker -n metallb-system
-                if [ $? -ne 0 ]; then
-                    echo "Warning: Failed to restart speaker DaemonSet, continuing..."
-                fi
+                echo "Warning: Failed to patch speaker DaemonSet volumeMounts, continuing..."
             fi
-        else
-            echo "Warning: Could not determine memberlist volume index, skipping patch..."
+        fi
+        echo "Restarting speaker DaemonSet to apply volume changes..."
+        kubectl rollout restart daemonset speaker -n metallb-system
+        if [ $? -ne 0 ]; then
+            echo "Warning: Failed to restart speaker DaemonSet for volume changes, continuing..."
         fi
     else
-        echo "No memberlist volume found in speaker DaemonSet, skipping patch..."
+        echo "No memberlist volume found in speaker DaemonSet, skipping volume patch..."
+    fi
+    # Check if control-plane toleration exists
+    if kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.tolerations[*]}{.key}{"\n"}{end}' | grep -q "node-role.kubernetes.io/control-plane"; then
+        echo "Removing control-plane toleration from speaker DaemonSet..."
+        kubectl patch daemonset speaker -n metallb-system --type='strategic' -p='{"spec":{"template":{"spec":{"tolerations":[{"key":"node-role.kubernetes.io/control-plane","$patch":"delete"}]}}}}'
+        if [ $? -ne 0 ]; then
+            echo "Warning: Failed to remove control-plane toleration from speaker DaemonSet, continuing..."
+        else
+            echo "Restarting speaker DaemonSet to apply toleration changes..."
+            kubectl rollout restart daemonset speaker -n metallb-system
+            if [ $? -ne 0 ]; then
+                echo "Warning: Failed to restart speaker DaemonSet for toleration changes, continuing..."
+            fi
+        fi
+    else
+        echo "No control-plane toleration found in speaker DaemonSet, skipping toleration patch..."
     fi
 else
     echo "Deploying MetalLB..."
@@ -184,22 +196,23 @@ else
         echo "Warning: Failed to apply MetalLB manifest, continuing..."
     else
         echo "Removing memberlist volume from speaker DaemonSet..."
-        # Fetch the index of the memberlist volume
-        volume_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.volumes[*]}{.name}{"\n"}{end}' | grep -n "memberlist" | cut -d: -f1)
-        if [ -n "$volume_index" ]; then
-            volume_index=$((volume_index-1))  # Adjust for 0-based indexing
-            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/volumes/$volume_index\"}, {\"op\": \"remove\", \"path\": \"/spec/template/spec/containers/0/volumeMounts/[?(@.name==\\\"memberlist\\\")]\"}]"
+        kubectl patch daemonset speaker -n metallb-system --type='strategic' -p='{"spec":{"template":{"spec":{"volumes":[{"name":"memberlist","$patch":"delete"}]}}}}'
+        if [ $? -ne 0 ]; then
+            echo "Warning: Failed to remove memberlist volume, attempting container volumeMounts patch..."
+            kubectl patch daemonset speaker -n metallb-system --type='strategic' -p='{"spec":{"template":{"spec":{"containers":[{"name":"speaker","volumeMounts":[{"name":"memberlist","$patch":"delete"}]}]}}}}'
             if [ $? -ne 0 ]; then
-                echo "Warning: Failed to patch speaker DaemonSet to remove memberlist volume, continuing..."
-            else
-                echo "Restarting speaker DaemonSet to apply changes..."
-                kubectl rollout restart daemonset speaker -n metallb-system
-                if [ $? -ne 0 ]; then
-                    echo "Warning: Failed to restart speaker DaemonSet, continuing..."
-                fi
+                echo "Warning: Failed to patch speaker DaemonSet volumeMounts, continuing..."
             fi
-        else
-            echo "Warning: Could not determine memberlist volume index after deployment, skipping patch..."
+        fi
+        echo "Removing control-plane toleration from speaker DaemonSet..."
+        kubectl patch daemonset speaker -n metallb-system --type='strategic' -p='{"spec":{"template":{"spec":{"tolerations":[{"key":"node-role.kubernetes.io/control-plane","$patch":"delete"}]}}}}'
+        if [ $? -ne 0 ]; then
+            echo "Warning: Failed to remove control-plane toleration from speaker DaemonSet, continuing..."
+        fi
+        echo "Restarting speaker DaemonSet to apply changes..."
+        kubectl rollout restart daemonset speaker -n metallb-system
+        if [ $? -ne 0 ]; then
+            echo "Warning: Failed to restart speaker DaemonSet, continuing..."
         fi
     fi
 
