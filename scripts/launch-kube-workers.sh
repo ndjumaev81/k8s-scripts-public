@@ -125,20 +125,20 @@ for node in $worker_nodes; do
         echo "Warning: Worker script ran but $node not joined, continuing. Check $log_file"
         continue
     fi
-    # Wait for node to become Ready (up to 300 seconds)
-    echo "Waiting for $node to become Ready (up to 300 seconds)..."
-    for attempt in {1..30}; do
+    # Wait for node to become Ready (up to 120 seconds)
+    echo "Waiting for $node to become Ready (up to 120 seconds)..."
+    for attempt in {1..12}; do
         if kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath="{.items[?(@.metadata.name=='$node')].status.conditions[?(@.type=='Ready')].status}" | grep -q "True"; then
             echo "$node is Ready"
             break
         fi
-        if [ $attempt -eq 30 ]; then
-            echo "Warning: $node not Ready after 300 seconds, continuing..."
+        if [ $attempt -eq 12 ]; then
+            echo "Warning: $node not Ready after 120 seconds, continuing..."
             kubectl get nodes -o wide
             kubectl describe node "$node" 2>/dev/null || echo "Failed to describe node $node"
             break
         fi
-        echo "Attempt $attempt/30: $node not Ready, waiting 10 seconds..."
+        echo "Attempt $attempt/12: $node not Ready, waiting 10 seconds..."
         sleep 10
     done
     multipass exec "$node" -- sudo rm /tmp/worker.sh
@@ -159,12 +159,19 @@ if kubectl get deployment controller -n metallb-system >/dev/null 2>&1; then
     # Check if memberlist volume exists
     if kubectl get daemonset speaker -n metallb-system -o jsonpath='{.spec.template.spec.volumes[?(@.name=="memberlist")].name}' | grep -q "memberlist"; then
         echo "Removing memberlist volume from speaker DaemonSet..."
-        kubectl patch daemonset speaker -n metallb-system --type='merge' -p='{"spec":{"template":{"spec":{"volumes":[{"name":"memberlist"}]}}}}'
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to remove memberlist volume, continuing..."
+        # Find index of memberlist volume
+        volume_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.volumes[*]}{.name}{"\n"}{end}' | grep -n "memberlist" | cut -d: -f1)
+        if [ -n "$volume_index" ]; then
+            volume_index=$((volume_index-1))
+            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/volumes/$volume_index\"}]"
+            if [ $? -ne 0 ]; then
+                echo "Warning: Failed to remove memberlist volume, continuing..."
+            else
+                echo "Memberlist volume removed successfully."
+                needs_restart=1
+            fi
         else
-            echo "Memberlist volume removed successfully."
-            needs_restart=1
+            echo "Warning: Could not find memberlist volume index, skipping volume patch..."
         fi
     else
         echo "No memberlist volume found in speaker DaemonSet, skipping volume patch..."
@@ -172,12 +179,19 @@ if kubectl get deployment controller -n metallb-system >/dev/null 2>&1; then
     # Check if memberlist volumeMount exists
     if kubectl get daemonset speaker -n metallb-system -o jsonpath='{.spec.template.spec.containers[0].volumeMounts[?(@.name=="memberlist")].name}' | grep -q "memberlist"; then
         echo "Removing memberlist volumeMount from speaker container..."
-        kubectl patch daemonset speaker -n metallb-system --type='merge' -p='{"spec":{"template":{"spec":{"containers":[{"name":"speaker","volumeMounts":[{"name":"memberlist"}]}]}}}}'
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to remove memberlist volumeMount, continuing..."
+        # Find index of memberlist volumeMount
+        mount_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.containers[0].volumeMounts[*]}{.name}{"\n"}{end}' | grep -n "memberlist" | cut -d: -f1)
+        if [ -n "$mount_index" ]; then
+            mount_index=$((mount_index-1))
+            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/containers/0/volumeMounts/$mount_index\"}]"
+            if [ $? -ne 0 ]; then
+                echo "Warning: Failed to remove memberlist volumeMount, continuing..."
+            else
+                echo "Memberlist volumeMount removed successfully."
+                needs_restart=1
+            fi
         else
-            echo "Memberlist volumeMount removed successfully."
-            needs_restart=1
+            echo "Warning: Could not find memberlist volumeMount index, skipping volumeMount patch..."
         fi
     else
         echo "No memberlist volumeMount found in speaker container, skipping volumeMount patch..."
@@ -185,12 +199,19 @@ if kubectl get deployment controller -n metallb-system >/dev/null 2>&1; then
     # Check if control-plane toleration exists
     if kubectl get daemonset speaker -n metallb-system -o jsonpath='{.spec.template.spec.tolerations[?(@.key=="node-role.kubernetes.io/control-plane")].key}' | grep -q "node-role.kubernetes.io/control-plane"; then
         echo "Removing control-plane toleration from speaker DaemonSet..."
-        kubectl patch daemonset speaker -n metallb-system --type='merge' -p='{"spec":{"template":{"spec":{"tolerations":[{"key":"node-role.kubernetes.io/control-plane"}]}}}}'
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to remove control-plane toleration from speaker DaemonSet, continuing..."
+        # Find index of control-plane toleration
+        toleration_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.tolerations[*]}{.key}{"\n"}{end}' | grep -n "node-role.kubernetes.io/control-plane" | cut -d: -f1)
+        if [ -n "$toleration_index" ]; then
+            toleration_index=$((toleration_index-1))
+            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/tolerations/$toleration_index\"}]"
+            if [ $? -ne 0 ]; then
+                echo "Warning: Failed to remove control-plane toleration from speaker DaemonSet, continuing..."
+            else
+                echo "Control-plane toleration removed successfully."
+                needs_restart=1
+            fi
         else
-            echo "Control-plane toleration removed successfully."
-            needs_restart=1
+            echo "Warning: Could not find control-plane toleration index, skipping toleration patch..."
         fi
     else
         echo "No control-plane toleration found in speaker DaemonSet, skipping toleration patch..."
@@ -198,7 +219,7 @@ if kubectl get deployment controller -n metallb-system >/dev/null 2>&1; then
     # Perform single restart if any patch was applied
     if [ $needs_restart -eq 1 ]; then
         echo "Restarting speaker DaemonSet to apply changes..."
-        sleep 1  # Avoid rate limit
+        sleep 2  # Avoid rate limit
         kubectl rollout restart daemonset speaker -n metallb-system
         if [ $? -ne 0 ]; then
             echo "Warning: Failed to restart speaker DaemonSet, continuing..."
@@ -215,22 +236,34 @@ else
         echo "Warning: Failed to apply MetalLB manifest, continuing..."
     else
         echo "Removing memberlist volume from speaker DaemonSet..."
-        kubectl patch daemonset speaker -n metallb-system --type='merge' -p='{"spec":{"template":{"spec":{"volumes":[{"name":"memberlist"}]}}}}'
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to remove memberlist volume, continuing..."
+        volume_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.volumes[*]}{.name}{"\n"}{end}' | grep -n "memberlist" | cut -d: -f1)
+        if [ -n "$volume_index" ]; then
+            volume_index=$((volume_index-1))
+            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/volumes/$volume_index\"}]"
+            if [ $? -ne 0 ]; then
+                echo "Warning: Failed to remove memberlist volume, continuing..."
+            fi
         fi
         echo "Removing memberlist volumeMount from speaker container..."
-        kubectl patch daemonset speaker -n metallb-system --type='merge' -p='{"spec":{"template":{"spec":{"containers":[{"name":"speaker","volumeMounts":[{"name":"memberlist"}]}]}}}}'
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to remove memberlist volumeMount, continuing..."
+        mount_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.containers[0].volumeMounts[*]}{.name}{"\n"}{end}' | grep -n "memberlist" | cut -d: -f1)
+        if [ -n "$mount_index" ]; then
+            mount_index=$((mount_index-1))
+            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/containers/0/volumeMounts/$mount_index\"}]"
+            if [ $? -ne 0 ]; then
+                echo "Warning: Failed to remove memberlist volumeMount, continuing..."
+            fi
         fi
         echo "Removing control-plane toleration from speaker DaemonSet..."
-        kubectl patch daemonset speaker -n metallb-system --type='merge' -p='{"spec":{"template":{"spec":{"tolerations":[{"key":"node-role.kubernetes.io/control-plane"}]}}}}'
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to remove control-plane toleration from speaker DaemonSet, continuing..."
+        toleration_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.tolerations[*]}{.key}{"\n"}{end}' | grep -n "node-role.kubernetes.io/control-plane" | cut -d: -f1)
+        if [ -n "$toleration_index" ]; then
+            toleration_index=$((toleration_index-1))
+            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/tolerations/$toleration_index\"}]"
+            if [ $? -ne 0 ]; then
+                echo "Warning: Failed to remove control-plane toleration from speaker DaemonSet, continuing..."
+            fi
         fi
         echo "Restarting speaker DaemonSet to apply changes..."
-        sleep 1  # Avoid rate limit
+        sleep 2  # Avoid rate limit
         kubectl rollout restart daemonset speaker -n metallb-system
         if [ $? -ne 0 ]; then
             echo "Warning: Failed to restart speaker DaemonSet, continuing..."
@@ -249,13 +282,13 @@ fi
 # Verify MetalLB pods
 echo "Waiting for MetalLB controller pod to be ready (up to 300 seconds)..."
 for attempt in {1..30}; do
-    for retry in {1..3}; do
-        ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=controller --no-headers 2>/dev/null | awk '$2 == "1/1" && $3 == "Running" {print $1}' | wc -l | xargs)
+    for retry in {1..5}; do
+        ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=controller --no-headers 2>/dev/null | grep -E '^[a-zA-Z0-9-]+\s+1/1\s+Running' | wc -l | xargs)
         if [ -n "$ready_pods" ] && [ "$ready_pods" -ge 1 ]; then
             break
         fi
-        echo "Retry $retry/3: Controller pod query failed, waiting 2 seconds..."
-        sleep 2
+        echo "Retry $retry/5: Controller pod query failed, waiting 3 seconds..."
+        sleep 3
     done
     desired_pods=1
     if [ "$ready_pods" -eq "$desired_pods" ]; then
@@ -276,13 +309,13 @@ done
 
 echo "Waiting for MetalLB speaker pod to be ready (up to 300 seconds)..."
 for attempt in {1..30}; do
-    for retry in {1..3}; do
-        ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker --no-headers 2>/dev/null | awk '$2 == "1/1" && $3 == "Running" {print $1}' | wc -l | xargs)
+    for retry in {1..5}; do
+        ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker --no-headers 2>/dev/null | grep -E '^[a-zA-Z0-9-]+\s+1/1\s+Running' | wc -l | xargs)
         if [ -n "$ready_pods" ] && [ "$ready_pods" -ge 1 ]; then
             break
         fi
-        echo "Retry $retry/3: Speaker pod query failed, waiting 2 seconds..."
-        sleep 2
+        echo "Retry $retry/5: Speaker pod query failed, waiting 3 seconds..."
+        sleep 3
     done
     desired_pods=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep -c "k8s-worker")
     if [ "$ready_pods" -eq "$desired_pods" ]; then
@@ -338,7 +371,7 @@ fi
 # Verify NFS provisioner pods
 echo "Verifying NFS provisioner pods (up to 120 seconds)..."
 for attempt in {1..12}; do
-    ready_pods=$(kubectl get pods -n kube-system -l app=nfs-provisioner-p501 --no-headers 2>/dev/null | awk '$2 == "1/1" && $3 == "Running" {print $1}' | wc -l | xargs)
+    ready_pods=$(kubectl get pods -n kube-system -l app=nfs-provisioner-p501 --no-headers 2>/dev/null | grep -E '^[a-zA-Z0-9-]+\s+1/1\s+Running' | wc -l | xargs)
     if [ "$ready_pods" -ge 1 ]; then
         echo "NFS provisioner pods are ready"
         break
