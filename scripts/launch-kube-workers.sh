@@ -53,32 +53,30 @@ if [ -z "$master_ip" ]; then
 fi
 echo "k8s-master IP: $master_ip"
 
-# Fetch or reuse join token and hash from k8s-master
-echo "Checking for existing join token on k8s-master..."
-existing_token=$(multipass exec k8s-master -- sudo kubeadm token list | grep -E '[a-z0-9]{6}\.[a-z0-9]{16}' | awk '{print $1}')
-if [ -n "$existing_token" ]; then
-    echo "Found existing token: $existing_token"
-    TOKEN="$existing_token"
-    # Fetch discovery-token-ca-cert-hash
-    join_output=$(multipass exec k8s-master -- sudo kubeadm token create --print-join-command 2>&1)
-    HASH=$(echo "$join_output" | grep -oE 'sha256:[a-f0-9]{64}' | head -n1)
-    if [ -z "$HASH" ]; then
-        echo "Error: Could not retrieve discovery-token-ca-cert-hash"
-        exit 1
-    fi
-else
-    echo "No existing token found, generating new join token..."
-    join_output=$(multipass exec k8s-master -- sudo kubeadm token create --print-join-command 2>&1)
-    if [ $? -ne 0 ]; then
-        echo "Error: Failed to generate token. Output: $join_output"
-        exit 1
-    fi
-    TOKEN=$(echo "$join_output" | grep -oE '[a-z0-9]{6}\.[a-z0-9]{16}' | head -n1)
-    HASH=$(echo "$join_output" | grep -oE 'sha256:[a-f0-9]{64}' | head -n1)
-    if [ -z "$TOKEN" ] || [ -z "$HASH" ]; then
-        echo "Error: Could not parse token or hash from output: $join_output"
-        exit 1
-    fi
+# Clean up old tokens on k8s-master
+echo "Cleaning up old bootstrap tokens on k8s-master..."
+multipass exec k8s-master -- sudo kubeadm token list | grep -E '[a-z0-9]{6}\.[a-z0-9]{16}' | awk '{print $1}' | while read -r token; do
+    multipass exec k8s-master -- sudo kubeadm token delete "$token"
+done
+
+# Generate a new join token
+echo "Generating new join token..."
+join_output=$(multipass exec k8s-master -- sudo kubeadm token create --print-join-command 2>&1)
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to generate token. Output: $join_output"
+    exit 1
+fi
+TOKEN=$(echo "$join_output" | grep -oE '[a-z0-9]{6}\.[a-z0-9]{16}' | head -n1)
+HASH=$(echo "$join_output" | grep -oE 'sha256:[a-z0-9]{64}' | head -n1)
+if [ -z "$TOKEN" ] || [ -z "$HASH" ]; then
+    echo "Error: Could not parse token or hash from output: $join_output"
+    exit 1
+fi
+
+# Validate token format
+if ! echo "$TOKEN" | grep -qE '^[a-z0-9]{6}\.[a-z0-9]{16}$'; then
+    echo "Error: Invalid token format: $TOKEN"
+    exit 1
 fi
 echo "Using token: $TOKEN, hash: $HASH"
 
@@ -114,6 +112,7 @@ for node in $worker_nodes; do
     fi
     # Run worker.sh with correct arguments
     log_file="/tmp/$node-worker-$(date +%s).log"
+    echo "Executing worker.sh on $node with token: $TOKEN, hash: $HASH, host_username: $HOST_USERNAME"
     multipass exec "$node" -- sudo bash /tmp/worker.sh k8s-master.loc "$TOKEN" "$HASH" "$HOST_USERNAME" 2>&1 | tee "$log_file"
     if [ $? -ne 0 ]; then
         echo "Warning: Worker setup failed on $node, continuing. Check $log_file"
@@ -124,18 +123,69 @@ for node in $worker_nodes; do
         echo "$node successfully joined the cluster"
     else
         echo "Warning: Worker script ran but $node not joined, continuing. Check $log_file"
+        continue
     fi
+    # Wait for node to become Ready (up to 300 seconds)
+    echo "Waiting for $node to become Ready (up to 300 seconds)..."
+    for attempt in {1..30}; do
+        if kubectl get nodes --selector='!node-role.kubernetes.io/control-plane' -o jsonpath="{.items[?(@.metadata.name=='$node')].status.conditions[?(@.type=='Ready')].status}" | grep -q "True"; then
+            echo "$node is Ready"
+            break
+        fi
+        if [ $attempt -eq 30 ]; then
+            echo "Warning: $node not Ready after 300 seconds, continuing..."
+            kubectl get nodes -o wide
+            kubectl describe node "$node" 2>/dev/null || echo "Failed to describe node $node"
+            break
+        fi
+        echo "Attempt $attempt/30: $node not Ready, waiting 10 seconds..."
+        sleep 10
+    done
     multipass exec "$node" -- sudo rm /tmp/worker.sh
 done
 
+# Verify cluster nodes
+echo "Verifying cluster nodes..."
+kubectl get nodes -o wide
+if [ $? -ne 0 ]; then
+    echo "Warning: Failed to retrieve cluster nodes, continuing..."
+fi
+
 # Deploy MetalLB after workers are processed
 if kubectl get deployment controller -n metallb-system >/dev/null 2>&1; then
-    echo "MetalLB already deployed, skipping..."
+    echo "MetalLB already deployed, checking speaker configuration..."
+    # Patch speaker to remove memberlist volume if needed
+    kubectl get daemonset speaker -n metallb-system -o jsonpath='{.spec.template.spec.volumes[?(@.name=="memberlist")]}' >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "Removing memberlist volume from speaker DaemonSet..."
+        kubectl patch daemonset speaker -n metallb-system --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/volumes/[?(@.name==\"memberlist\")]"}, {"op": "remove", "path": "/spec/template/spec/containers/0/volumeMounts/[?(@.name==\"memberlist\")]"}]'
+        if [ $? -ne 0 ]; then
+            echo "Warning: Failed to patch speaker DaemonSet, continuing..."
+        else
+            echo "Restarting speaker DaemonSet to apply changes..."
+            kubectl rollout restart daemonset speaker -n metallb-system
+            if [ $? -ne 0 ]; then
+                echo "Warning: Failed to restart speaker DaemonSet, continuing..."
+            fi
+        fi
+    fi
 else
     echo "Deploying MetalLB..."
     kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
     if [ $? -ne 0 ]; then
         echo "Warning: Failed to apply MetalLB manifest, continuing..."
+    else
+        echo "Removing memberlist volume from speaker DaemonSet..."
+        kubectl patch daemonset speaker -n metallb-system --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/volumes/[?(@.name==\"memberlist\")]"}, {"op": "remove", "path": "/spec/template/spec/containers/0/volumeMounts/[?(@.name==\"memberlist\")]"}]'
+        if [ $? -ne 0 ]; then
+            echo "Warning: Failed to patch speaker DaemonSet, continuing..."
+        else
+            echo "Restarting speaker DaemonSet to apply changes..."
+            kubectl rollout restart daemonset speaker -n metallb-system
+            if [ $? -ne 0 ]; then
+                echo "Warning: Failed to restart speaker DaemonSet, continuing..."
+            fi
+        fi
     fi
 
     echo "Applying MetalLB configuration..."
@@ -143,14 +193,16 @@ else
     if [ $? -ne 0 ]; then
         echo "Warning: Failed to apply MetalLB configuration, continuing..."
         kubectl describe service metallb-webhook-service -n metallb-system 2>/dev/null || echo "Webhook service not found"
-        kubectl logs -n metallb-system -l app.kubernetes.io/component=controller 2>/dev/null || echo "No controller pod logs available"
+        kubectl logs -n metallb-system -l app.kubernetes.io/component=controller 2>&1 || echo "No controller pod logs available"
     fi
 fi
 
 # Verify MetalLB pods
 echo "Waiting for MetalLB controller pod to be ready (up to 300 seconds)..."
 for attempt in {1..30}; do
-    if kubectl get pods -n metallb-system -l app.kubernetes.io/component=controller -o jsonpath='{.items[*].status.phase}' | grep -q "Running"; then
+    ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=controller -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' | grep -c "True")
+    desired_pods=1
+    if [ "$ready_pods" -eq "$desired_pods" ]; then
         echo "MetalLB controller pod is ready"
         break
     fi
@@ -161,13 +213,15 @@ for attempt in {1..30}; do
         kubectl describe pod -n metallb-system -l app.kubernetes.io/component=controller 2>/dev/null || echo "No controller pods found"
         break
     fi
-    echo "Attempt $attempt/30: Controller pod not ready, waiting 10 seconds..."
+    echo "Attempt $attempt/30: Controller pod not ready ($ready_pods/$desired_pods ready), waiting 10 seconds..."
     sleep 10
 done
 
 echo "Waiting for MetalLB speaker pod to be ready (up to 300 seconds)..."
 for attempt in {1..30}; do
-    if kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker -o jsonpath='{.items[*].status.phase}' | grep -q "Running"; then
+    ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' | grep -c "True")
+    desired_pods=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep -c "k8s-worker")
+    if [ "$ready_pods" -eq "$desired_pods" ]; then
         echo "MetalLB speaker pod is ready"
         break
     fi
@@ -178,7 +232,7 @@ for attempt in {1..30}; do
         kubectl describe pod -n metallb-system -l app.kubernetes.io/component=speaker 2>/dev/null || echo "No speaker pods found"
         break
     fi
-    echo "Attempt $attempt/30: Speaker pod not ready, waiting 10 seconds..."
+    echo "Attempt $attempt/30: Speaker pod not ready ($ready_pods/$desired_pods ready), waiting 10 seconds..."
     sleep 10
 done
 
