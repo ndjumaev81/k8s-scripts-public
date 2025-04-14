@@ -281,57 +281,39 @@ fi
 
 # Verify MetalLB pods
 echo "Waiting for MetalLB controller pod to be ready (up to 300 seconds)..."
-for attempt in {1..30}; do
-    for retry in {1..5}; do
-        ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=controller --no-headers 2>/dev/null | grep -E '^[a-zA-Z0-9-]+\s+1/1\s+Running' | wc -l | xargs)
-        if [ -n "$ready_pods" ] && [ "$ready_pods" -ge 1 ]; then
-            break
-        fi
-        echo "Retry $retry/5: Controller pod query failed, waiting 3 seconds..."
-        sleep 3
-    done
+for attempt in {1..20}; do
+    ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=controller --no-headers 2>/dev/null | grep -E '1/1\s+Running' | wc -l | xargs)
     desired_pods=1
     if [ "$ready_pods" -eq "$desired_pods" ]; then
         echo "MetalLB controller pod is ready"
         break
     fi
-    if [ $attempt -eq 30 ]; then
+    if [ $attempt -eq 20 ]; then
         echo "Warning: MetalLB controller pod not ready after 300 seconds ($ready_pods/$desired_pods ready), continuing..."
-        kubectl get deployment controller -n metallb-system
-        kubectl get pods -n metallb-system
-        kubectl describe pod -n metallb-system -l app.kubernetes.io/component=controller 2>/dev/null || echo "No controller pods found"
-        kubectl get events -n metallb-system 2>/dev/null || echo "No events found"
+        kubectl get deployment controller -n metallb-system 2>/dev/null || echo "Controller deployment not found"
+        kubectl get pods -n metallb-system 2>/dev/null || echo "No pods found in metallb-system"
         break
     fi
-    echo "Attempt $attempt/30: Controller pod not ready ($ready_pods/$desired_pods ready), waiting 10 seconds..."
-    sleep 10
+    echo "Attempt $attempt/20: Controller pod not ready ($ready_pods/$desired_pods ready), waiting 15 seconds..."
+    sleep 15
 done
 
 echo "Waiting for MetalLB speaker pod to be ready (up to 300 seconds)..."
-for attempt in {1..30}; do
-    for retry in {1..5}; do
-        ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker --no-headers 2>/dev/null | grep -E '^[a-zA-Z0-9-]+\s+1/1\s+Running' | wc -l | xargs)
-        if [ -n "$ready_pods" ] && [ "$ready_pods" -ge 1 ]; then
-            break
-        fi
-        echo "Retry $retry/5: Speaker pod query failed, waiting 3 seconds..."
-        sleep 3
-    done
+for attempt in {1..20}; do
+    ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker --no-headers 2>/dev/null | grep -E '1/1\s+Running' | wc -l | xargs)
     desired_pods=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep -c "k8s-worker")
     if [ "$ready_pods" -eq "$desired_pods" ]; then
         echo "MetalLB speaker pod is ready"
         break
     fi
-    if [ $attempt -eq 30 ]; then
+    if [ $attempt -eq 20 ]; then
         echo "Warning: MetalLB speaker pod not ready after 300 seconds ($ready_pods/$desired_pods ready), continuing..."
-        kubectl get daemonset speaker -n metallb-system
-        kubectl get pods -n metallb-system
-        kubectl describe pod -n metallb-system -l app.kubernetes.io/component=speaker 2>/dev/null || echo "No speaker pods found"
-        kubectl get events -n metallb-system 2>/dev/null || echo "No events found"
+        kubectl get daemonset speaker -n metallb-system 2>/dev/null || echo "Speaker daemonset not found"
+        kubectl get pods -n metallb-system 2>/dev/null || echo "No pods found in metallb-system"
         break
     fi
-    echo "Attempt $attempt/30: Speaker pod not ready ($ready_pods/$desired_pods ready), waiting 10 seconds..."
-    sleep 10
+    echo "Attempt $attempt/20: Speaker pod not ready ($ready_pods/$desired_pods ready), waiting 15 seconds..."
+    sleep 15
 done
 
 # Deploy NFS provisioner
@@ -371,18 +353,17 @@ fi
 # Verify NFS provisioner pods
 echo "Verifying NFS provisioner pods (up to 120 seconds)..."
 for attempt in {1..12}; do
-    ready_pods=$(kubectl get pods -n kube-system -l app=nfs-provisioner-p501 --no-headers 2>/dev/null | grep -E '^[a-zA-Z0-9-]+\s+1/1\s+Running' | wc -l | xargs)
+    ready_pods=$(kubectl get pods -n kube-system -l app=nfs-provisioner-p501 --no-headers 2>/dev/null | grep -E '1/1\s+Running' | wc -l | xargs)
     if [ "$ready_pods" -ge 1 ]; then
         echo "NFS provisioner pods are ready"
         break
     fi
     if [ $attempt -eq 12 ]; then
         echo "Warning: NFS provisioner pods not ready after 120 seconds, continuing..."
-        kubectl get pods -n kube-system -l app=nfs-provisioner-p501
-        kubectl describe pod -n kube-system -l app=nfs-provisioner-p501 2>/dev/null || echo "No NFS provisioner pods found"
+        kubectl get pods -n kube-system -l app=nfs-provisioner-p501 2>/dev/null || echo "No NFS provisioner pods found"
         break
     fi
-    echo "Attempt $attempt/12: Pods not ready ($ready_pods pods ready), waiting 10 seconds..."
+    echo "Attempt $attempt/12: NFS provisioner pods not ready ($ready_pods pods ready), waiting 10 seconds..."
     sleep 10
 done
 
