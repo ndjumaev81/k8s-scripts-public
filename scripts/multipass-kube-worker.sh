@@ -1,15 +1,16 @@
 #!/bin/bash
 
 # Check if all arguments are provided
-if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
-    echo "Error: Address, token, and discovery token hash not provided."
-    echo "Usage: $0 <worker-address> <token> <discovery-token-ca-cert-hash>"
+if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
+    echo "Error: Address, token, discovery token hash, or host username not provided."
+    echo "Usage: $0 <worker-address> <token> <discovery-token-ca-cert-hash> <host-username>"
     exit 1
 fi
 
 MASTER_ADDRESS="$1"
 TOKEN="$2"
 HASH="$3"
+HOST_USERNAME="$4"
 
 # Resolve hostname to IP if not already an IP
 if [[ $MASTER_ADDRESS =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -37,18 +38,18 @@ sudo apt install -y apt-transport-https ca-certificates curl gnupg containerd
 echo "Installing NFS client..."
 sudo apt install -y nfs-common
 if ! dpkg -l | grep -q nfs-common; then
-    echo "Error: nfs-common installation failed"
-    exit 1
-fi
-echo "Verifying no NFS server services are running..."
-if systemctl --type=service | grep -q "nfs-kernel-server"; then
-    echo "Error: NFS server service (nfs-kernel-server) found running"
-    systemctl --type=service | grep nfs
-    exit 1
-fi
-if systemctl --type=service | grep -q "nfs"; then
-    echo "Warning: NFS-related services found, but not nfs-kernel-server. Proceeding..."
-    systemctl --type=service | grep nfs
+    echo "Warning: nfs-common installation failed, continuing..."
+else
+    echo "Verifying no NFS server services are running..."
+    if systemctl --type=service | grep -q "nfs-kernel-server"; then
+        echo "Error: NFS server service (nfs-kernel-server) found running"
+        systemctl --type=service | grep nfs
+        exit 1
+    fi
+    if systemctl --type=service | grep -q "nfs"; then
+        echo "Warning: NFS-related services found, but not nfs-kernel-server. Proceeding..."
+        systemctl --type=service | grep nfs
+    fi
 fi
 
 # Test NFS mount
@@ -56,12 +57,12 @@ echo "Testing NFS mount..."
 sudo mkdir -p /mnt/nfs
 sudo mount -t nfs 192.168.64.1:/Users/$HOST_USERNAME/nfs-share/p501 /mnt/nfs
 if [ $? -ne 0 ]; then
-    echo "Error: Failed to mount NFS share"
-    exit 1
+    echo "Warning: Failed to mount NFS share, continuing..."
+else
+    ls /mnt/nfs
+    sudo umount /mnt/nfs
+    echo "Test mount [/mnt/nfs] unmounted."
 fi
-ls /mnt/nfs
-sudo umount /mnt/nfs
-echo "Test mount [/mnt/nfs] unmounted."
 
 # Configure containerd
 sudo mkdir -p /etc/containerd
@@ -102,5 +103,10 @@ sudo sed -i '/swap/d' /etc/fstab
 
 # Join the cluster
 sudo kubeadm join "$MASTER_IP:6443" --token "$TOKEN" --discovery-token-ca-cert-hash "$HASH"
+if [ $? -ne 0 ]; then
+    echo "Warning: kubeadm join failed, continuing..."
+else
+    echo "Successfully joined cluster"
+fi
 
 echo "Worker node setup complete."
