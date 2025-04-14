@@ -154,20 +154,28 @@ fi
 # Deploy MetalLB after workers are processed
 if kubectl get deployment controller -n metallb-system >/dev/null 2>&1; then
     echo "MetalLB already deployed, checking speaker configuration..."
-    # Patch speaker to remove memberlist volume if needed
-    kubectl get daemonset speaker -n metallb-system -o jsonpath='{.spec.template.spec.volumes[?(@.name=="memberlist")]}' >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
+    # Check if memberlist volume exists
+    if kubectl get daemonset speaker -n metallb-system -o jsonpath='{.spec.template.spec.volumes[?(@.name=="memberlist")].name}' | grep -q "memberlist"; then
         echo "Removing memberlist volume from speaker DaemonSet..."
-        kubectl patch daemonset speaker -n metallb-system --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/volumes/[?(@.name==\"memberlist\")]"}, {"op": "remove", "path": "/spec/template/spec/containers/0/volumeMounts/[?(@.name==\"memberlist\")]"}]'
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to patch speaker DaemonSet, continuing..."
-        else
-            echo "Restarting speaker DaemonSet to apply changes..."
-            kubectl rollout restart daemonset speaker -n metallb-system
+        # Fetch the index of the memberlist volume
+        volume_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.volumes[*]}{.name}{"\n"}{end}' | grep -n "memberlist" | cut -d: -f1)
+        if [ -n "$volume_index" ]; then
+            volume_index=$((volume_index-1))  # Adjust for 0-based indexing
+            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/volumes/$volume_index\"}, {\"op\": \"remove\", \"path\": \"/spec/template/spec/containers/0/volumeMounts/[?(@.name==\\\"memberlist\\\")]\"}]"
             if [ $? -ne 0 ]; then
-                echo "Warning: Failed to restart speaker DaemonSet, continuing..."
+                echo "Warning: Failed to patch speaker DaemonSet to remove memberlist volume, continuing..."
+            else
+                echo "Restarting speaker DaemonSet to apply changes..."
+                kubectl rollout restart daemonset speaker -n metallb-system
+                if [ $? -ne 0 ]; then
+                    echo "Warning: Failed to restart speaker DaemonSet, continuing..."
+                fi
             fi
+        else
+            echo "Warning: Could not determine memberlist volume index, skipping patch..."
         fi
+    else
+        echo "No memberlist volume found in speaker DaemonSet, skipping patch..."
     fi
 else
     echo "Deploying MetalLB..."
@@ -176,15 +184,22 @@ else
         echo "Warning: Failed to apply MetalLB manifest, continuing..."
     else
         echo "Removing memberlist volume from speaker DaemonSet..."
-        kubectl patch daemonset speaker -n metallb-system --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/volumes/[?(@.name==\"memberlist\")]"}, {"op": "remove", "path": "/spec/template/spec/containers/0/volumeMounts/[?(@.name==\"memberlist\")]"}]'
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to patch speaker DaemonSet, continuing..."
-        else
-            echo "Restarting speaker DaemonSet to apply changes..."
-            kubectl rollout restart daemonset speaker -n metallb-system
+        # Fetch the index of the memberlist volume
+        volume_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.volumes[*]}{.name}{"\n"}{end}' | grep -n "memberlist" | cut -d: -f1)
+        if [ -n "$volume_index" ]; then
+            volume_index=$((volume_index-1))  # Adjust for 0-based indexing
+            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/volumes/$volume_index\"}, {\"op\": \"remove\", \"path\": \"/spec/template/spec/containers/0/volumeMounts/[?(@.name==\\\"memberlist\\\")]\"}]"
             if [ $? -ne 0 ]; then
-                echo "Warning: Failed to restart speaker DaemonSet, continuing..."
+                echo "Warning: Failed to patch speaker DaemonSet to remove memberlist volume, continuing..."
+            else
+                echo "Restarting speaker DaemonSet to apply changes..."
+                kubectl rollout restart daemonset speaker -n metallb-system
+                if [ $? -ne 0 ]; then
+                    echo "Warning: Failed to restart speaker DaemonSet, continuing..."
+                fi
             fi
+        else
+            echo "Warning: Could not determine memberlist volume index after deployment, skipping patch..."
         fi
     fi
 
@@ -200,17 +215,18 @@ fi
 # Verify MetalLB pods
 echo "Waiting for MetalLB controller pod to be ready (up to 300 seconds)..."
 for attempt in {1..30}; do
-    ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=controller -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' | grep -c "True")
+    ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=controller --no-headers 2>/dev/null | awk '$2 == "1/1" && $3 == "Running" {print $1}' | wc -l | xargs)
     desired_pods=1
     if [ "$ready_pods" -eq "$desired_pods" ]; then
         echo "MetalLB controller pod is ready"
         break
     fi
     if [ $attempt -eq 30 ]; then
-        echo "Warning: MetalLB controller pod not ready after 300 seconds, continuing..."
+        echo "Warning: MetalLB controller pod not ready after 300 seconds ($ready_pods/$desired_pods ready), continuing..."
         kubectl get deployment controller -n metallb-system
         kubectl get pods -n metallb-system
         kubectl describe pod -n metallb-system -l app.kubernetes.io/component=controller 2>/dev/null || echo "No controller pods found"
+        kubectl get events -n metallb-system 2>/dev/null || echo "No events found"
         break
     fi
     echo "Attempt $attempt/30: Controller pod not ready ($ready_pods/$desired_pods ready), waiting 10 seconds..."
@@ -219,17 +235,18 @@ done
 
 echo "Waiting for MetalLB speaker pod to be ready (up to 300 seconds)..."
 for attempt in {1..30}; do
-    ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' | grep -c "True")
+    ready_pods=$(kubectl get pods -n metallb-system -l app.kubernetes.io/component=speaker --no-headers 2>/dev/null | awk '$2 == "1/1" && $3 == "Running" {print $1}' | wc -l | xargs)
     desired_pods=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep -c "k8s-worker")
     if [ "$ready_pods" -eq "$desired_pods" ]; then
         echo "MetalLB speaker pod is ready"
         break
     fi
     if [ $attempt -eq 30 ]; then
-        echo "Warning: MetalLB speaker pod not ready after 300 seconds, continuing..."
+        echo "Warning: MetalLB speaker pod not ready after 300 seconds ($ready_pods/$desired_pods ready), continuing..."
         kubectl get daemonset speaker -n metallb-system
         kubectl get pods -n metallb-system
         kubectl describe pod -n metallb-system -l app.kubernetes.io/component=speaker 2>/dev/null || echo "No speaker pods found"
+        kubectl get events -n metallb-system 2>/dev/null || echo "No events found"
         break
     fi
     echo "Attempt $attempt/30: Speaker pod not ready ($ready_pods/$desired_pods ready), waiting 10 seconds..."
@@ -273,7 +290,8 @@ fi
 # Verify NFS provisioner pods
 echo "Verifying NFS provisioner pods (up to 120 seconds)..."
 for attempt in {1..12}; do
-    if kubectl get pods -n kube-system -l app=nfs-provisioner-p501 -o jsonpath='{.items[*].status.phase}' | grep -q "Running"; then
+    ready_pods=$(kubectl get pods -n kube-system -l app=nfs-provisioner-p501 --no-headers 2>/dev/null | awk '$2 == "1/1" && $3 == "Running" {print $1}' | wc -l | xargs)
+    if [ "$ready_pods" -ge 1 ]; then
         echo "NFS provisioner pods are ready"
         break
     fi
@@ -283,7 +301,7 @@ for attempt in {1..12}; do
         kubectl describe pod -n kube-system -l app=nfs-provisioner-p501 2>/dev/null || echo "No NFS provisioner pods found"
         break
     fi
-    echo "Attempt $attempt/12: Pods not ready, waiting 10 seconds..."
+    echo "Attempt $attempt/12: Pods not ready ($ready_pods pods ready), waiting 10 seconds..."
     sleep 10
 done
 
