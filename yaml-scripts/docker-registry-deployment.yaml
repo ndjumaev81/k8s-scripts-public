@@ -49,5 +49,5 @@ spec:
     - ReadWriteOnce # Suitable for a single node; use ReadWriteMany for multi-node NFS
   resources:
     requests:
-      storage: 40Gi
-  storageClassName: nfs-storage-retain
+      storage: 20Gi
+  storageClassName: nfs-p501-retain

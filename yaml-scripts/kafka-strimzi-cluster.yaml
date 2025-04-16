@@ -31,7 +31,7 @@ spec:
       type: persistent-claim
       size: 10Gi
       deleteClaim: false
-      class: nfs-storage-retain
+      class: nfs-p501-retain
     resources:
       requests:
         memory: "500Mi"
@@ -45,7 +45,7 @@ spec:
       type: persistent-claim
       size: 1Gi
       deleteClaim: false
-      class: nfs-storage-retain
+      class: nfs-p501-retain
     resources:
       requests:
         memory: "500Mi"
