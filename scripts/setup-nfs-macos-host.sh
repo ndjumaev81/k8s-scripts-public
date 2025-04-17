@@ -3,23 +3,15 @@
 # Exit on any error
 set -e
 
-# Check if username argument is provided
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <username>"
-    exit 1
-fi
-
 # Variables
-USERNAME="$1"
-
-SHARE_DIR="/Users/$USERNAME/nfs-share"
-
+USERNAME=$(whoami)
+SHARE_DIR="/Users/Shared/nfs-share"
 P1000_DIR="$SHARE_DIR/p1000"
 P999_DIR="$SHARE_DIR/p999"
 P501_DIR="$SHARE_DIR/p501"
 P101_DIR="$SHARE_DIR/p101"
-
 EXPORTS_FILE="/etc/exports"
+
 # Get UID and GID of the user on the host
 USER_P501_UID=$(id -u "$USERNAME")
 USER_P501_GID=$(id -g "$USERNAME")
@@ -37,53 +29,55 @@ EXPORT_LINE_P101="$P101_DIR -alldirs -mapall=$USER_P101_UID:$USER_P101_GID -netw
 
 # Step 1: Create the shared directory
 echo "Creating NFS share directory: $SHARE_DIR"
-mkdir -p "$SHARE_DIR"
-chmod 755 "$SHARE_DIR" # More secure permissions (changed from 777)
+sudo mkdir -p "$SHARE_DIR"
+sudo chmod 755 "$SHARE_DIR" # More secure permissions (changed from 777)
+sudo chown root:wheel "$SHARE_DIR"
 
 echo "Creating subdirectories for different UID/GID mappings..."
-mkdir -p "$P1000_DIR"
-mkdir -p "$P999_DIR"
-mkdir -p "$P501_DIR"
-mkdir -p "$P101_DIR"
+sudo mkdir -p "$P1000_DIR"
+sudo mkdir -p "$P999_DIR"
+sudo mkdir -p "$P501_DIR"
+sudo mkdir -p "$P101_DIR"
 
 echo "Setting permissions for subdirectories..."
-chmod 755 "$P1000_DIR"
-chmod 755 "$P999_DIR"
-chmod 755 "$P501_DIR"
-chmod 755 "$P101_DIR"
+sudo chmod 755 "$P1000_DIR"
+sudo chmod 700 "$P999_DIR"
+sudo chmod 755 "$P501_DIR"
+sudo chmod 755 "$P101_DIR"
 
 echo "Setting ownership for subdirectories..."
-sudo chown $USER_P1000_UID:$USER_P1000_GID "$P1000_DIR"
-sudo chown $USER_P999_UID:$USER_P999_GID "$P999_DIR"
-sudo chown $USER_P501_UID:$USER_P501_GID "$P501_DIR"
-sudo chown $USER_P101_UID:$USER_P101_GID "$P101_DIR"
+sudo chown root:wheel "$P1000_DIR"
+sudo chown root:wheel "$P999_DIR"
+sudo chown root:wheel "$P501_DIR"
+sudo chown root:wheel "$P101_DIR"
 
-# Step 2: Backup and configure /etc/exports
+# Step 2: Clear and configure /etc/exports
 echo "Configuring NFS exports..."
-sudo cp "$EXPORTS_FILE" "$EXPORTS_FILE.bak" 2>/dev/null || true  # Backup if exists
-# Remove existing entries for SHARE_DIR to avoid duplicates
+sudo mv /etc/exports /etc/exports.bak 2>/dev/null || true
+sudo touch /etc/exports
+
+sudo cp "$EXPORTS_FILE" "$EXPORTS_FILE.bak" 2>/dev/null || true
 sudo sed -i '' "/^${SHARE_DIR//\//\\/}/d" "$EXPORTS_FILE" 2>/dev/null || true
-# Add new export lines
 echo "$EXPORT_LINE_P1000" | sudo tee -a "$EXPORTS_FILE" > /dev/null
 echo "$EXPORT_LINE_P999" | sudo tee -a "$EXPORTS_FILE" > /dev/null
 echo "$EXPORT_LINE_P501" | sudo tee -a "$EXPORTS_FILE" > /dev/null
 echo "$EXPORT_LINE_P101" | sudo tee -a "$EXPORTS_FILE" > /dev/null
 
-# Step 3: Ensure NFS required services are running
-echo "Ensuring RPC and NFS services are configured..."
-# Enable and start rpcbind (required for NFS)
-#sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.rpcbind.plist 2>/dev/null || true
-#sudo launchctl start com.apple.rpcbind
-
-# Enable and start rpcbind (required for NFS)
+# Step 3: Ensure rpcbind is running (required for NFS)
+echo "Checking if rpcbind is running..."
 if ! sudo launchctl list com.apple.rpcbind >/dev/null 2>&1; then
+    echo "Starting rpcbind..."
     sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.rpcbind.plist
     sudo launchctl start com.apple.rpcbind
+    sleep 1
     if ! sudo launchctl list com.apple.rpcbind >/dev/null 2>&1; then
-        echo "Failed to start rpcbind. Check system logs."
-        sudo cat /var/log/system.log | grep -i rpcbind
-        exit 1
+        echo "Warning: Failed to start rpcbind. Checking logs..."
+        log show --predicate 'subsystem == "com.apple.rpcbind"' --last 10m --info --debug
+    else
+        echo "rpcbind started successfully."
     fi
+else
+    echo "rpcbind is already running."
 fi
 
 # Step 4: Enable and restart NFS service
@@ -99,7 +93,7 @@ if sudo nfsd checkexports && sudo nfsd status; then
     echo "NFS service is running."
 else
     echo "Failed to start NFS. Checking logs..."
-    sudo cat /var/log/nfsd.log
+    log show --predicate '(subsystem == "com.apple.nfsd") || (process == "nfsd")' --last 10m --info --debug
     exit 1
 fi
 
@@ -124,18 +118,8 @@ fi
 # Step 7: Show exported shares
 echo "Listing exported shares..."
 showmount -e localhost || {
-    echo "showmount failed. This might be a temporary issue; NFS should still work."
-    echo "Try running 'showmount -e localhost' manually after a few seconds."
+    echo "showmount failed. Try running 'showmount -e localhost' manually."
 }
-
-# Step 7: Firewall adjustment (restrict to Multipass and localhost)
-echo "Adjusting firewall for NFS (restricting to 192.168.64.0/24 and 127.0.0.1)..."
-# Ensure firewall is enabled
-sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
-# Add nfsd and restrict access
-sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /sbin/nfsd
-sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /sbin/nfsd
-# Note: macOS firewall doesn't support IP-based rules natively; rely on /etc/exports for IP restriction
 
 echo "NFS setup complete! Share is available at $SHARE_DIR."
 echo "Access restricted to 192.168.64.0/24 (Multipass VMs)"

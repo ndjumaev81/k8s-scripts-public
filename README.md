@@ -1,3 +1,29 @@
+# Use the itsthenetwork/nfs-server-alpine image for the NFS server.
+# Pull the Image:
+docker pull itsthenetwork/nfs-server-alpine:latest
+# Verify:
+docker images itsthenetwork/nfs-server-alpine
+# Run the NFS Server Container
+docker run -d \
+  --name nfs-server \
+  --privileged \
+  -v /Users/<username>/nfs-share:/nfsshare \
+  -e SHARED_DIRECTORY=/nfsshare \
+  -p 2049:2049 \
+  itsthenetwork/nfs-server-alpine:latest
+
+# Explanation:
+#    -v /Users/<username>/nfs-share:/nfsshare: Mounts ~/nfs-share to /nfsshare in the container.
+#    -e SHARED_DIRECTORY=/nfsshare: Exports /nfsshare (and its subfolders) via NFS.
+#    -p 2049:2049: Exposes the NFS port.
+#    --privileged: Required for NFS kernel operations.
+#    -d: Runs in the background.
+
+# Verify Container:
+dcoker ps
+# If the container exits, check logs:
+docker logs nfs-server
+
 # Install multipass
 brew install --cask multipass
 
@@ -19,6 +45,11 @@ brew install --cask multipass
 # Install kube workers on multipass workers vm instance 
 ./launch-kube-workers.sh <github-username>
 
+
+# Verify existence of metallb yaml configuration
+kubectl get ipaddresspool -n metallb-system
+kubectl get l2advertisement -n metallb-system
+kubectl get bgppeer -n metallb-system
 
 # Re-apply if needed
 kubectl apply -f https://raw.githubusercontent.com/<username>/k8s-scripts-public/refs/heads/main/yaml-scripts/metallb-config-fixed-and-auto.yaml

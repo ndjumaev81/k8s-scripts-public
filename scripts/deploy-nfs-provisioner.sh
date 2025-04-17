@@ -3,21 +3,22 @@
 # Check if NFS server IP argument is provided
 if [ $# -ne 2 ]; then
     echo "Usage: $0 <nfs-server-ip>"
-    echo "Example: $0 192.168.64.1 <username>"
+    echo "Example: $0 192.168.64.1"
     exit 1
 fi
 
 NFS_SERVER="$1"
-USERNAME="$2"
 
+USERNAME=$(whoami)
 USER_UID=$(id -u "$USERNAME")
 USER_GID=$(id -g "$USERNAME")
 
+SHARE_DIR="/Users/Shared/nfs-share"
 # Define paths for each subdirectory
-NFS_PATH_P1000="/Users/$USERNAME/nfs-share/p1000"
-NFS_PATH_P999="/Users/$USERNAME/nfs-share/p999"
-NFS_PATH_P501="/Users/$USERNAME/nfs-share/p501"
-NFS_PATH_P101="/Users/$USERNAME/nfs-share/p101"
+NFS_PATH_P1000="$SHARE_DIR/p1000"
+NFS_PATH_P999="$SHARE_DIR/p999"
+NFS_PATH_P501="$SHARE_DIR/p501"
+NFS_PATH_P101="$SHARE_DIR/p101"
 
 # Export variables for envsubst
 export NFS_SERVER

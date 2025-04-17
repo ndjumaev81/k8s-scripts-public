@@ -281,7 +281,7 @@ else
             # Test NFS mount from first worker
             first_worker=$(echo "$worker_nodes" | head -n1)
             echo "Testing NFS mount from $first_worker..."
-            multipass exec "$first_worker" -- sudo bash -c "mkdir -p /mnt/nfs && mount -t nfs 192.168.64.1:/Users/$HOST_USERNAME/nfs-share/p501 /mnt/nfs && umount /mnt/nfs"
+            multipass exec "$first_worker" -- sudo bash -c "mkdir -p /mnt/nfs && mount -t nfs 192.168.64.1:/Users/Shared/nfs-share/p501 /mnt/nfs && umount /mnt/nfs"
             if [ $? -ne 0 ]; then
                 echo "Warning: NFS mount test failed on $first_worker, continuing..."
                 multipass exec "$first_worker" -- showmount -e 192.168.64.1
@@ -289,7 +289,7 @@ else
 
             # Execute NFS provisioner script
             chmod +x /tmp/deploy-nfs-provisioner.sh
-            /tmp/deploy-nfs-provisioner.sh 192.168.64.1 "$HOST_USERNAME"
+            /tmp/deploy-nfs-provisioner.sh 192.168.64.1
             if [ $? -ne 0 ]; then
                 echo "Warning: NFS provisioner deployment failed, continuing..."
             fi
