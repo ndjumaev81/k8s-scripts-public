@@ -78,7 +78,7 @@ kubectl apply -f kafka-strimzi-cluster.yaml --dry-run=server
 # Apply Bridge and Swagger UI First:
 kubectl apply -f kafka-bridge-and-swagger.yaml -n kafka
 # Apply Registry
-kubectl apply -f apicurio-registry.yaml -n kafka
+kubectl apply -f kafka-apicurio-registry.yaml -n kafka
 # Apply Kafka Cluster Second:
 kubectl apply -f kafka-strimzi-cluster.yaml -n kafka
 
