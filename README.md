@@ -52,9 +52,6 @@ kubectl apply -f apicurio-registry.yaml -n kafka
 kubectl apply -f kafka-strimzi-cluster.yaml -n kafka
 
 # Deploy the Docker Registry
-# Create a Namespace
-kubectl create namespace registry
-
 # VALID SECRETS 
 # Create a docker-registry Secret
 kubectl create secret docker-registry registry-auth \
@@ -67,11 +64,6 @@ kubectl create secret docker-registry registry-auth \
 # Verify the Secret
 kubectl get secret registry-auth -n kafka -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
 
-# Use wget with basic authentication to confirm the registry works:
-kubectl run test --image=busybox --restart=Never --rm -it -- sh
-# Inside the pod:
-wget --user=mydockeruser2 --password=<your-password> -O- http://192.168.64.106:5000/v2/
-
 # Deploy the Registry
 kubectl apply -f docker-registry-deployment.yaml
 
@@ -82,8 +74,24 @@ kubectl apply -f docker-registry-lb.yaml
 kubectl get pods -n registry
 kubectl describe pod -n registry <registry-pod-name>
 
+# Use wget with basic authentication to confirm the registry works:
+kubectl run test --image=busybox --restart=Never --rm -it -- sh
+# Inside the pod:
+wget  -O- http://mydockeruser2:<your-password>@192.168.64.106:5000/v2/
+
 # Test authentication by logging in:
 docker login <registry-address>:5000
+
+# Run oracle in docker-desktop
+# -e ORACLE_PWD: Sets the password for SYS and SYSTEM users.
+# -p 1521:1521: Maps the Oracle port to your host.
+# The Oracle Docker Images repository provides defaults unless overridden by environment variables (e.g., ORACLE_SID or ORACLE_PDB):
+#    SID: The default SID for the Container Database (CDB) is ORCLCDB.
+#    Service Name:
+#        For the CDB, the default service name is ORCLCDB.
+#        For the default Pluggable Database (PDB), the service name is ORCLPDB1.
+# Since your command doesn’t specify -e ORACLE_SID or -e ORACLE_PDB, these defaults apply.
+docker run -d -p 1521:1521 -e ORACLE_PWD=<password> -e ORACLE_SID=<sid> -e ORACLE_PDB=<pdb>  oracle/database:19.3.0-ee
 
 
 # Kafka-connector:
