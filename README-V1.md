@@ -108,24 +108,3 @@ sudo umount /mnt/nfs
 
 # Create nfs-provisioner resource in kubernetes via script
 ./scripts/deploy-nfs-provisioner.sh 192.168.64.1 <username>
-
-# Install the Strimzi Kafka Operator:
-# Create a namespace for Kafka:
-kubectl create namespace kafka
-
-# Deploy the Strimzi Cluster Operator using the official installation YAML:
-kubectl apply -f 'https://strimzi.io/install/latest?namespace=kafka' -n kafka
-
-# After applying the Strimzi installation, confirm the CRDs are now available:
-kubectl get crd | grep kafka.strimzi.io
-
-# Validate YAML: Ensure your strimzi-kafka.yaml has no syntax errors:
-kubectl apply -f kafka-strimzi-cluster.yaml --dry-run=server
-
-# Deployment Steps
-# Apply Bridge and Swagger UI First:
-kubectl apply -f kafka-bridge-and-swagger.yaml -n kafka
-# Apply Registry
-kubectl apply -f apicurio-registry.yaml -n kafka
-# Apply Kafka Cluster Second:
-kubectl apply -f kafka-strimzi-cluster.yaml -n kafka

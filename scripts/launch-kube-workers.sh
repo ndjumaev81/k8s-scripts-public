@@ -211,14 +211,6 @@ else
             echo "Warning: Failed to restart speaker DaemonSet, continuing..."
         fi
     fi
-
-    echo "Applying MetalLB configuration..."
-    kubectl apply -f https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/yaml-scripts/metallb-config-fixed-and-auto.yaml
-    if [ $? -ne 0 ]; then
-        echo "Warning: Failed to apply MetalLB configuration, continuing..."
-        kubectl describe service metallb-webhook-service -n metallb-system 2>/dev/null || echo "Webhook service not found"
-        kubectl logs -n metallb-system -l app=metallb,component=controller 2>&1 || echo "No controller pod logs available"
-    fi
 fi
 
 # Verify MetalLB pods
@@ -261,6 +253,15 @@ for attempt in {1..20}; do
     echo "Attempt $attempt/20: Speaker pod not ready ($ready_pods/$desired_pods ready), waiting 15 seconds..."
     sleep 15
 done
+
+# Apply MetalLB configuration after pods are ready
+echo "Applying MetalLB configuration..."
+kubectl apply -f https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/yaml-scripts/metallb-config-fixed-and-auto.yaml
+if [ $? -ne 0 ]; then
+    echo "Warning: Failed to apply MetalLB configuration, continuing..."
+    kubectl describe service metallb-webhook-service -n metallb-system 2>/dev/null || echo "Webhook service not found"
+    kubectl logs -n metallb-system -l app=metallb,component=controller 2>&1 || echo "No controller pod logs available"
+fi
 
 # Deploy NFS provisioner
 if kubectl get deployment nfs-provisioner-p501 -n kube-system >/dev/null 2>&1; then
