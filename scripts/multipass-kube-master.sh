@@ -7,6 +7,8 @@ if [ -z "$1" ] || [ -z "$2" ]; then
     exit 1
 fi
 
+SHARE_DIR="/Users/Shared/nfs-share"
+
 MASTER_ADDRESS="$1"
 HOST_USERNAME="$2"
 
@@ -53,7 +55,7 @@ fi
 # Test NFS mount
 echo "Testing NFS mount..."
 sudo mkdir -p /mnt/nfs
-sudo mount -t nfs 192.168.64.1:/Users/$HOST_USERNAME/nfs-share/p501 /mnt/nfs
+sudo mount -t nfs 192.168.64.1:$SHARE_DIR/p501 /mnt/nfs
 if [ $? -ne 0 ]; then
     echo "Error: Failed to mount NFS share"
     exit 1

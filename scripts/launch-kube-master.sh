@@ -13,6 +13,7 @@ if [ $# -ne 1 ]; then
 fi
 
 GITHUB_USERNAME="$1"
+SHARE_DIR="/Users/Shared/nfs-share"
 NFS_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/setup-nfs-macos-host.sh"
 MASTER_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/multipass-kube-master.sh"
 
@@ -50,7 +51,7 @@ fi
 # Verify NFS exports with retry loop
 echo "Verifying NFS exports (up to 60 seconds)..."
 for attempt in {1..6}; do
-    if showmount -e localhost | grep -q "/Users/$HOST_USERNAME/nfs-share/p1000"; then
+    if showmount -e localhost | grep -q "$SHARE_DIR/p1000"; then
         echo "NFS exports verified successfully"
         break
     fi
