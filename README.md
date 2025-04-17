@@ -50,3 +50,62 @@ kubectl apply -f kafka-bridge-and-swagger.yaml -n kafka
 kubectl apply -f apicurio-registry.yaml -n kafka
 # Apply Kafka Cluster Second:
 kubectl apply -f kafka-strimzi-cluster.yaml -n kafka
+
+# Deploy the Docker Registry
+# Create a Namespace
+kubectl create namespace registry
+
+# VALID SECRETS 
+# Create a docker-registry Secret
+kubectl create secret docker-registry registry-auth \
+  --docker-server=http://192.168.64.106:5000 \
+  --docker-username=mydockeruser2 \
+  --docker-password=<your-password> \
+  --docker-email=mydockeruser2@test.com \
+  -n kafka
+
+# Verify the Secret
+kubectl get secret registry-auth -n kafka -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
+
+# Use wget with basic authentication to confirm the registry works:
+kubectl run test --image=busybox --restart=Never --rm -it -- sh
+# Inside the pod:
+wget --user=mydockeruser2 --password=<your-password> -O- http://192.168.64.106:5000/v2/
+
+# Deploy the Registry
+kubectl apply -f docker-registry-deployment.yaml
+
+# Deploy load balancer for registry
+kubectl apply -f docker-registry-lb.yaml
+
+# Inspect the running pod:
+kubectl get pods -n registry
+kubectl describe pod -n registry <registry-pod-name>
+
+# Test authentication by logging in:
+docker login <registry-address>:5000
+
+
+# Kafka-connector:
+# Visit Confluent Hub JDBC Connector to see available versions.
+# use a Maven command to list available versions:
+mvn dependency:get -DrepoUrl=https://packages.confluent.io/maven/ -DgroupId=io.confluent -DartifactId=kafka-connect-jdbc -Dversion=10.7.4
+
+# Deploy Kafka Connect:
+kubectl apply -f kafka-connect.yaml -n kafka
+
+# Verify Deployment:
+kubectl get pods -n kafka
+
+# Check logs
+kubectl logs my-connect-connect-0 -n kafka
+
+# Add the Oracle Connector:
+# oracle-jdbc-connector.yaml
+kubectl apply -f oracle-jdbc-connector.yaml -n kafka
+
+# Validate Data Flow: Check the connector status:
+kubectl get kafkaconnector oracle-jdbc-source -n kafka
+
+# Consume messages:
+kubectl exec -it my-cluster-kafka-0 -n kafka -- kafka-console-consumer --bootstrap-server localhost:29092 --topic oracle-your_table_name --from-beginning
