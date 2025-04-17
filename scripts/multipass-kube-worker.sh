@@ -3,16 +3,13 @@
 # Check if all arguments are provided
 if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
     echo "Error: Address, token, discovery token hash, or host username not provided."
-    echo "Usage: $0 <worker-address> <token> <discovery-token-ca-cert-hash> <host-username>"
+    echo "Usage: $0 <worker-address> <token> <discovery-token-ca-cert-hash>"
     exit 1
 fi
-
-SHARE_DIR="/Users/Shared/nfs-share"
 
 MASTER_ADDRESS="$1"
 TOKEN="$2"
 HASH="$3"
-HOST_USERNAME="$4"
 
 # Resolve hostname to IP if not already an IP
 if [[ $MASTER_ADDRESS =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -52,18 +49,6 @@ else
         echo "Warning: NFS-related services found, but not nfs-kernel-server. Proceeding..."
         systemctl --type=service | grep nfs
     fi
-fi
-
-# Test NFS mount
-echo "Testing NFS mount..."
-sudo mkdir -p /mnt/nfs
-sudo mount -t nfs 192.168.64.1:$SHARE_DIR/p501 /mnt/nfs
-if [ $? -ne 0 ]; then
-    echo "Warning: Failed to mount NFS share, continuing..."
-else
-    ls /mnt/nfs
-    sudo umount /mnt/nfs
-    echo "Test mount [/mnt/nfs] unmounted."
 fi
 
 # Configure containerd

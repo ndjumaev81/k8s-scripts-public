@@ -17,13 +17,6 @@ WORKER_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-script
 
 METALLB_URL=https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/yaml-scripts/metallb-config-fixed-and-auto.yaml
 
-# Get current macOS username
-HOST_USERNAME=$(whoami)
-if [ -z "$HOST_USERNAME" ]; then
-    echo "Error: Could not determine current username"
-    exit 1
-fi
-
 # Validate k8s-master exists
 if ! multipass info k8s-master >/dev/null 2>&1; then
     echo "Error: k8s-master does not exist"
@@ -113,8 +106,8 @@ for node in $worker_nodes; do
     fi
     # Run worker.sh with correct arguments
     log_file="/tmp/$node-worker-$(date +%s).log"
-    echo "Executing worker.sh on $node with token: $TOKEN, hash: $HASH, host_username: $HOST_USERNAME"
-    multipass exec "$node" -- sudo bash /tmp/worker.sh k8s-master.loc "$TOKEN" "$HASH" "$HOST_USERNAME" 2>&1 | tee "$log_file"
+    echo "Executing worker.sh on $node with token: $TOKEN, hash: $HASH"
+    multipass exec "$node" -- sudo bash /tmp/worker.sh k8s-master.loc "$TOKEN" "$HASH" 2>&1 | tee "$log_file"
     if [ $? -ne 0 ]; then
         echo "Warning: Worker setup failed on $node, continuing. Check $log_file"
         continue

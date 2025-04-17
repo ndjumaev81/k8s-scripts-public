@@ -13,7 +13,6 @@ if [ $# -ne 1 ]; then
 fi
 
 GITHUB_USERNAME="$1"
-SHARE_DIR="/Users/Shared/nfs-share"
 NFS_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/setup-nfs-macos-host.sh"
 MASTER_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/multipass-kube-master.sh"
 
@@ -33,35 +32,13 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Get current macOS username
-HOST_USERNAME=$(whoami)
-if [ -z "$HOST_USERNAME" ]; then
-    echo "Error: Could not determine current username"
-    exit 1
-fi
-
 # Execute NFS setup script
 chmod +x /tmp/setup-nfs-macos-host.sh
-/tmp/setup-nfs-macos-host.sh "$HOST_USERNAME"
+/tmp/setup-nfs-macos-host.sh
 if [ $? -ne 0 ]; then
     echo "Error: NFS setup failed"
     exit 1
 fi
-
-# Verify NFS exports with retry loop
-echo "Verifying NFS exports (up to 60 seconds)..."
-for attempt in {1..6}; do
-    if showmount -e localhost | grep -q "$SHARE_DIR/p1000"; then
-        echo "NFS exports verified successfully"
-        break
-    fi
-    if [ $attempt -eq 6 ]; then
-        echo "Error: NFS exports not verified after 60 seconds"
-        exit 1
-    fi
-    echo "Attempt $attempt/6: NFS exports not ready, waiting 10 seconds..."
-    sleep 10
-done
 
 # Validate k8s-master exists
 if ! multipass info k8s-master >/dev/null 2>&1; then
@@ -106,7 +83,7 @@ else
         exit 1
     fi
 
-    multipass exec k8s-master -- sudo bash /tmp/master.sh "$MASTER_IP" "$HOST_USERNAME" 2>&1 | tee "/tmp/k8s-master-$(date +%s).log"
+    multipass exec k8s-master -- sudo bash /tmp/master.sh "$MASTER_IP" 2>&1 | tee "/tmp/k8s-master-$(date +%s).log"
     if [ $? -ne 0 ]; then
         echo "Error: Master setup failed. Check /tmp/k8s-master-*.log"
         exit 1
