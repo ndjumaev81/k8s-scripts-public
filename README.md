@@ -33,3 +33,12 @@ kubectl get l2advertisement -n metallb-system
 
 # Launch docker registry in kubernetes
 ./setup-docker-registry.sh
+
+# Verify docker registry
+docker login <registry-address>:5000
+
+# Install kafka cluster
+./setup-kafka-cluster.sh
+
+# Run kafka connect builder
+kubectl apply -f ../yaml-scripts/kafka-connect.yaml -n kafka
