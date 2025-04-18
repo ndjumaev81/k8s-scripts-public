@@ -24,44 +24,85 @@ TEMP_DIR="../temp"
 # Enable error handling
 set -e
 
+# Check for nfs-client-retain storage class
+if ! kubectl get storageclass nfs-client-retain >/dev/null 2>&1; then
+  echo "Error: Storage class 'nfs-client-retain' not found. Please configure it or update docker-registry-deployment.yaml."
+  exit 1
+fi
+
+# Check for MetalLB readiness
+if ! kubectl get deployment controller -n metallb-system >/dev/null 2>&1; then
+  echo "Error: MetalLB is not deployed. Please run setup-metallb.sh first."
+  exit 1
+fi
+if ! kubectl get crd ipaddresspools.metallb.io >/dev/null 2>&1; then
+  echo "Error: MetalLB CRD 'ipaddresspools.metallb.io' not found. Please run setup-metallb.sh to install MetalLB."
+  exit 1
+fi
+
 # Create temp directory if it doesn't exist
 mkdir -p "$TEMP_DIR"
 
 # Define temporary YAML file in temp directory
-TEMP_YAML="$TEMP_DIR/docker-registry-service-temp.yaml"
+TEMP_YAML="$TEMP_DIR/docker-registry-deployment-temp.yaml"
 
-# Clean up temporary file on error, exit, or interrupt
-trap 'rm -f "$TEMP_YAML"; echo "Cleaned up temporary file: $TEMP_YAML"' EXIT ERR INT
+# Clean up temporary file function
+cleanup() {
+  if [ "${CLEANED_UP:-0}" -eq 0 ]; then
+    rm -f "$TEMP_YAML"
+    echo "Cleaned up temporary file: $TEMP_YAML"
+    CLEANED_UP=1
+  fi
+}
 
-# Create namespace if it doesn't exist
-kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
+# Set trap for error, interrupt, and cleanup on exit
+trap cleanup ERR INT
+trap 'cleanup; exit' EXIT
 
-# Create docker-registry Secret
-kubectl create secret docker-registry registry-auth \
-  --docker-server="$SERVER" \
-  --docker-username="$DOCKER_USERNAME" \
-  --docker-password="$DOCKER_PASSWORD" \
-  --docker-email="$DOCKER_EMAIL" \
-  -n "$NAMESPACE"
+# Generate .dockerconfigjson content and encode in base64
+AUTH=$(echo -n "$DOCKER_USERNAME:$DOCKER_PASSWORD" | base64 -w0)
+DOCKERCONFIGJSON=$(cat <<EOF | base64 -w0
+{
+  "auths": {
+    "$SERVER": {
+      "username": "$DOCKER_USERNAME",
+      "password": "$DOCKER_PASSWORD",
+      "email": "$DOCKER_EMAIL",
+      "auth": "$AUTH"
+    }
+  }
+}
+EOF
+)
 
-# Verify the Secret
-kubectl get secret registry-auth -n "$NAMESPACE" -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
+# Export variables for envsubst
+export NAMESPACE ADDRESS DOCKERCONFIGJSON
 
-# Export ADDRESS for envsubst
-export ADDRESS
-
-# Substitute ADDRESS in docker-registry-service.yaml
-cat "$YAML_DIR/docker-registry-service.yaml" | envsubst > "$TEMP_YAML"
-
-# Deploy the Registry
-kubectl apply -f "$YAML_DIR/docker-registry-deployment.yaml" -n "$NAMESPACE"
+# Substitute variables in docker-registry-deployment.yaml
+cat "$YAML_DIR/docker-registry-deployment.yaml" | envsubst > "$TEMP_YAML"
 
 # Deploy load balancer for registry
 kubectl apply -f "$TEMP_YAML" -n "$NAMESPACE"
 
+# Verify the Secret
+kubectl get secret registry-auth -n "$NAMESPACE" -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
+
 # Wait for registry pod to be running
 echo "Waiting for registry pod to be running..."
-kubectl wait --for=condition=Ready pod -l app=registry -n "$NAMESPACE" --timeout=120s
+if ! kubectl wait --for=condition=Ready pod -l app=registry -n "$NAMESPACE" --timeout=120s; then
+  echo "Error: Registry pod failed to become Ready. Checking pod status..."
+  kubectl get pods -n "$NAMESPACE"
+  REGISTRY_POD=$(kubectl get pods -n "$NAMESPACE" -l app=registry -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "No pod found")
+  if [ -n "$REGISTRY_POD" ] && [ "$REGISTRY_POD" != "No pod found" ]; then
+    echo "Pod details:"
+    kubectl describe pod -n "$NAMESPACE" "$REGISTRY_POD"
+    echo "Pod logs:"
+    kubectl logs -n "$NAMESPACE" "$REGISTRY_POD"
+  else
+    echo "No registry pod found."
+  fi
+  exit 1
+fi
 
 # Get registry pod name
 REGISTRY_POD=$(kubectl get pods -n "$NAMESPACE" -l app=registry -o jsonpath='{.items[0].metadata.name}')
@@ -69,6 +110,9 @@ REGISTRY_POD=$(kubectl get pods -n "$NAMESPACE" -l app=registry -o jsonpath='{.i
 # Inspect the running pod
 kubectl get pods -n "$NAMESPACE"
 kubectl describe pod -n "$NAMESPACE" "$REGISTRY_POD"
+
+# Clean up any existing test pod
+kubectl delete pod test -n "$NAMESPACE" --ignore-not-found=true
 
 # Test registry with wget using basic authentication
 kubectl run test --image=busybox --restart=Never --rm -it -- sh -c \

@@ -15,8 +15,6 @@ fi
 GITHUB_USERNAME="$1"
 WORKER_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/multipass-kube-worker.sh"
 
-METALLB_URL=https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/yaml-scripts/metallb-config-fixed-and-auto.yaml
-
 # Validate k8s-master exists
 if ! multipass info k8s-master >/dev/null 2>&1; then
     echo "Error: k8s-master does not exist"
@@ -142,119 +140,8 @@ done
 echo "Verifying cluster nodes..."
 kubectl get nodes -o wide
 if [ $? -ne 0 ]; then
-    echo "Warning: Failed to retrieve cluster nodes, continuing..."
-fi
-
-# Deploy MetalLB after workers are processed
-if kubectl get deployment controller -n metallb-system >/dev/null 2>&1; then
-    echo "MetalLB already deployed, checking speaker configuration..."
-    # Flag to track if restart is needed
-    needs_restart=0
-    # Check if control-plane toleration exists
-    if kubectl get daemonset speaker -n metallb-system -o jsonpath='{.spec.template.spec.tolerations[?(@.key=="node-role.kubernetes.io/control-plane")].key}' | grep -q "node-role.kubernetes.io/control-plane"; then
-        echo "Removing control-plane toleration from speaker DaemonSet..."
-        # Find index of control-plane toleration
-        toleration_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.tolerations[*]}{.key}{"\n"}{end}' | grep -n "node-role.kubernetes.io/control-plane" | cut -d: -f1)
-        if [ -n "$toleration_index" ]; then
-            toleration_index=$((toleration_index-1))
-            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/tolerations/$toleration_index\"}]"
-            if [ $? -ne 0 ]; then
-                echo "Warning: Failed to remove control-plane toleration from speaker DaemonSet, continuing..."
-            else
-                echo "Control-plane toleration removed successfully."
-                needs_restart=1
-            fi
-        else
-            echo "Warning: Could not find control-plane toleration index, skipping toleration patch..."
-        fi
-    else
-        echo "No control-plane toleration found in speaker DaemonSet, skipping toleration patch..."
-    fi
-    # Perform single restart if any patch was applied
-    if [ $needs_restart -eq 1 ]; then
-        echo "Restarting speaker DaemonSet to apply changes..."
-        sleep 2  # Avoid rate limit
-        kubectl rollout restart daemonset speaker -n metallb-system
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to restart speaker DaemonSet, continuing..."
-        else
-            echo "Speaker DaemonSet restarted successfully."
-        fi
-    else
-        echo "No changes applied to speaker DaemonSet, skipping restart..."
-    fi
-else
-    echo "Deploying MetalLB..."
-    kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
-    if [ $? -ne 0 ]; then
-        echo "Warning: Failed to apply MetalLB manifest, continuing..."
-    else
-        echo "Removing control-plane toleration from speaker DaemonSet..."
-        toleration_index=$(kubectl get daemonset speaker -n metallb-system -o jsonpath='{range .spec.template.spec.tolerations[*]}{.key}{"\n"}{end}' | grep -n "node-role.kubernetes.io/control-plane" | cut -d: -f1)
-        if [ -n "$toleration_index" ]; then
-            toleration_index=$((toleration_index-1))
-            kubectl patch daemonset speaker -n metallb-system --type='json' -p="[{\"op\": \"remove\", \"path\": \"/spec/template/spec/tolerations/$toleration_index\"}]"
-            if [ $? -ne 0 ]; then
-                echo "Warning: Failed to remove control-plane toleration from speaker DaemonSet, continuing..."
-            fi
-        fi
-        echo "Restarting speaker DaemonSet to apply changes..."
-        sleep 2  # Avoid rate limit
-        kubectl rollout restart daemonset speaker -n metallb-system
-        if [ $? -ne 0 ]; then
-            echo "Warning: Failed to restart speaker DaemonSet, continuing..."
-        fi
-    fi
-fi
-
-# Verify MetalLB pods
-echo "Waiting for MetalLB controller pod to be ready (up to 300 seconds)..."
-for attempt in {1..20}; do
-    ready_pods=$(kubectl get pods -n metallb-system -l app=metallb,component=controller --no-headers 2>/tmp/kubectl.err | grep '1/1' | grep -w 'Running' | wc -l | xargs)
-    desired_pods=1
-    if [ "$ready_pods" -eq "$desired_pods" ]; then
-        echo "MetalLB controller pod is ready"
-        break
-    fi
-    if [ $attempt -eq 20 ]; then
-        echo "Warning: MetalLB controller pod not ready after 300 seconds ($ready_pods/$desired_pods ready), continuing..."
-        kubectl get deployment controller -n metallb-system 2>/dev/null || echo "Controller deployment not found"
-        kubectl get pods -n metallb-system 2>/dev/null || echo "No pods found in metallb-system"
-        echo "Kubectl error log:"
-        cat /tmp/kubectl.err
-        break
-    fi
-    echo "Attempt $attempt/20: Controller pod not ready ($ready_pods/$desired_pods ready), waiting 15 seconds..."
-    sleep 15
-done
-
-echo "Waiting for MetalLB speaker pod to be ready (up to 300 seconds)..."
-for attempt in {1..20}; do
-    ready_pods=$(kubectl get pods -n metallb-system -l app=metallb,component=speaker --no-headers 2>/tmp/kubectl.err | grep '1/1' | grep -w 'Running' | wc -l | xargs)
-    desired_pods=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep -c "k8s-worker")
-    if [ "$ready_pods" -eq "$desired_pods" ]; then
-        echo "MetalLB speaker pod is ready"
-        break
-    fi
-    if [ $attempt -eq 20 ]; then
-        echo "Warning: MetalLB speaker pod not ready after 300 seconds ($ready_pods/$desired_pods ready), continuing..."
-        kubectl get daemonset speaker -n metallb-system 2>/dev/null || echo "Speaker daemonset not found"
-        kubectl get pods -n metallb-system 2>/dev/null || echo "No pods found in metallb-system"
-        echo "Kubectl error log:"
-        cat /tmp/kubectl.err
-        break
-    fi
-    echo "Attempt $attempt/20: Speaker pod not ready ($ready_pods/$desired_pods ready), waiting 15 seconds..."
-    sleep 15
-done
-
-# Apply MetalLB configuration after pods are ready
-echo "Applying MetalLB configuration..."
-kubectl apply -f $METALLB_URL
-if [ $? -ne 0 ]; then
-    echo "Warning: Failed to apply MetalLB configuration, continuing..."
-    kubectl describe service metallb-webhook-service -n metallb-system 2>/dev/null || echo "Webhook service not found"
-    kubectl logs -n metallb-system -l app=metallb,component=controller 2>&1 || echo "No controller pod logs available"
+    echo "Warning: Failed to retrieve cluster nodes."
+    exit 1
 fi
 
 echo "Worker node setup complete."

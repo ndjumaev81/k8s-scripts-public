@@ -13,32 +13,7 @@ if [ $# -ne 1 ]; then
 fi
 
 GITHUB_USERNAME="$1"
-NFS_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/setup-nfs-macos-host.sh"
 MASTER_SCRIPT_URL="https://raw.githubusercontent.com/$GITHUB_USERNAME/k8s-scripts-public/main/scripts/multipass-kube-master.sh"
-
-# Setup NFS on host
-echo "Setting up NFS on macOS host..."
-curl -s -f "$NFS_SCRIPT_URL" > /tmp/setup-nfs-macos-host.sh
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to download setup-nfs-macos-host.sh from $NFS_SCRIPT_URL"
-    exit 1
-fi
-
-# Validate script content
-grep -q '^#!/bin/bash' /tmp/setup-nfs-macos-host.sh
-if [ $? -ne 0 ]; then
-    echo "Error: Downloaded setup-nfs-macos-host.sh is invalid"
-    cat /tmp/setup-nfs-macos-host.sh
-    exit 1
-fi
-
-# Execute NFS setup script
-chmod +x /tmp/setup-nfs-macos-host.sh
-/tmp/setup-nfs-macos-host.sh
-if [ $? -ne 0 ]; then
-    echo "Error: NFS setup failed"
-    exit 1
-fi
 
 # Validate k8s-master exists
 if ! multipass info k8s-master >/dev/null 2>&1; then
