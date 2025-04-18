@@ -38,9 +38,9 @@ if [ "${BASH_VERSINFO[0]}" -lt 3 ]; then
     exit 1
 fi
 
-# Check if dns-server exists
+# Check if dns-server exists [Ubuntu 24.04 LTS]
 if ! multipass info "$DNS_VM" &>/dev/null; then
-    multipass launch --name "$DNS_VM" --cpus 1 --memory 512M --disk 4G
+    multipass launch --name "$DNS_VM" --cpus 1 --memory 512M --disk 4G 24.04
 else
     multipass start "$DNS_VM"
 fi

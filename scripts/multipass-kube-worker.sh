@@ -33,24 +33,6 @@ fi
 sudo apt update
 sudo apt install -y apt-transport-https ca-certificates curl gnupg containerd
 
-# Install NFS client
-echo "Installing NFS client..."
-sudo apt install -y nfs-common
-if ! dpkg -l | grep -q nfs-common; then
-    echo "Warning: nfs-common installation failed, continuing..."
-else
-    echo "Verifying no NFS server services are running..."
-    if systemctl --type=service | grep -q "nfs-kernel-server"; then
-        echo "Error: NFS server service (nfs-kernel-server) found running"
-        systemctl --type=service | grep nfs
-        exit 1
-    fi
-    if systemctl --type=service | grep -q "nfs"; then
-        echo "Warning: NFS-related services found, but not nfs-kernel-server. Proceeding..."
-        systemctl --type=service | grep nfs
-    fi
-fi
-
 # Configure containerd
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml

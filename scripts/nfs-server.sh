@@ -1,35 +1,42 @@
 #!/bin/bash
+set -e
 
-# Set default SHARED_DIR if not provided
-SHARED_DIR="${1:-~/nfsdata/shared}"
+VM_NAME="nfs-server"
+NFS_PATH="/srv/nfs"
+NETWORK_RANGE="192.168.64.0/24"
 
-# Resolve ~ to absolute path
-SHARED_DIR=$(eval echo "$SHARED_DIR")
-HOST_USERNAME=$(whoami)
+# Function to get VM IP
+get_vm_ip() {
+  local vm_name=$1
+  multipass info $vm_name --format json | jq -r '.info["'"$vm_name"'"].ipv4[0]' | grep -v null
+}
 
-# Set FULL_SHARED_DIR based on whether SHARED_DIR is absolute
-if [[ "$SHARED_DIR" == /* ]]; then
-    FULL_SHARED_DIR="$SHARED_DIR"
+# Check if VM exists, create if it doesn't
+if ! multipass info $VM_NAME >/dev/null 2>&1; then
+  echo "Creating VM $VM_NAME..."
+  multipass launch --name $VM_NAME --cpus 4 --memory 8G --disk 100G 22.04
 else
-    FULL_SHARED_DIR="$HOME/$SHARED_DIR"
+  echo "VM $VM_NAME already exists, skipping creation."
 fi
 
-# Create NFS directory if it doesn't exist
-sudo mkdir -p "$FULL_SHARED_DIR"
-
-# Rest of the script remains the same
-sudo chown 999:999 "$FULL_SHARED_DIR"
-sudo chmod 700 "$FULL_SHARED_DIR"
-
-# Update /etc/exports
-EXPORT_LINE="$FULL_SHARED_DIR -alldirs -mapall=999:999 -network 192.168.64.0 -mask 255.255.255.0"
-if ! grep -Fx "$EXPORT_LINE" /etc/exports >/dev/null; then
-    echo "$EXPORT_LINE" | sudo tee -a /etc/exports
+# Get the assigned IP
+NFS_IP=$(get_vm_ip $VM_NAME)
+if [ -z "$NFS_IP" ]; then
+  echo "Error: Could not retrieve IP for $VM_NAME."
+  exit 1
 fi
+echo "Using IP $NFS_IP for $VM_NAME."
 
-# Restart NFS service
-sudo nfsd restart
-sudo nfsd checkexports
+# Install and configure NFS
+multipass exec $VM_NAME -- sudo apt update
+multipass exec $VM_NAME -- sudo apt install -y nfs-kernel-server nfs-common
+multipass exec $VM_NAME -- sudo mkdir -p $NFS_PATH
+multipass exec $VM_NAME -- sudo chown 999:999 $NFS_PATH
+multipass exec $VM_NAME -- sudo chmod 700 $NFS_PATH
+multipass exec $VM_NAME -- sudo bash -c "grep -q '$NFS_PATH $NETWORK_RANGE' /etc/exports || echo '$NFS_PATH $NETWORK_RANGE(rw,sync,no_subtree_check,no_root_squash)' >> /etc/exports"
+multipass exec $VM_NAME -- sudo exportfs -ra
+multipass exec $VM_NAME -- sudo systemctl restart nfs-kernel-server
+multipass exec $VM_NAME -- sudo systemctl enable nfs-kernel-server
 
 # Add Helm repo
 helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
@@ -46,8 +53,8 @@ kubectl delete storageclass nfs-client nfs-client-retain 2>/dev/null || true
 # Create a temporary Helm values file for primary StorageClass
 cat <<EOF > /tmp/nfs-provisioner-values.yaml
 nfs:
-  server: 192.168.64.1
-  path: "$FULL_SHARED_DIR"
+  server: "$NFS_IP"
+  path: "$NFS_PATH"
 storageClass:
   create: true
   name: nfs-client
@@ -106,19 +113,23 @@ for i in {1..24}; do
     sleep 5
 done
 
-# Check logs if pod is found
-if [ -n "$POD_NAME" ]; then
-    echo "Retrieving logs for pod $POD_NAME..."
-    kubectl -n nfs-provisioning logs "$POD_NAME"
-else
-    echo "Error: Could not find NFS provisioner pod after 120 seconds"
+# Check if pod is ready, exit if not
+if [ -z "$POD_NAME" ] || [ "$POD_STATUS" != "Running" ] || [ "$READY_CONDITION" != "True" ]; then
+    echo "Error: NFS provisioner pod not ready after 120 seconds"
+    exit 1
 fi
+
+# Check logs
+echo "Retrieving logs for pod $POD_NAME..."
+kubectl -n nfs-provisioning logs "$POD_NAME"
 
 # Get StorageClass
 kubectl get storageclass
 
 # Show exported shares
 echo "Listing exported shares..."
-showmount -e localhost || {
-    echo "showmount failed. Try running 'showmount -e localhost' manually."
+multipass exec $VM_NAME -- showmount -e localhost || {
+    echo "showmount failed. Try running 'multipass exec $VM_NAME -- showmount -e localhost' manually."
 }
+
+echo "NFS server setup complete. Test with PVC and pod."
