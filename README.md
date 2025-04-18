@@ -18,9 +18,6 @@ cat /var/db/dhcpd_leases
 # Create dns-server based on CoreDns for multipass vms
 ./dns-server.sh
 
-# Create nfs-server
-./nfs-server.sh
-
 # Creates k8s-master 2 CPUs, 4GB memory and 10GB disk.
 ./launch-vm-1.sh 1 2 10 master
 # Creates k8s-workers 4 CPUs, 6GB memory and 10GB disk.
@@ -35,8 +32,8 @@ cat /var/db/dhcpd_leases
 # Install kube workers on multipass workers vm instance 
 ./launch-kube-workers.sh <github-username>
 
-# Launch Helm nfs provisioner
-./setup-nfs-provisioner-helm.sh
+# Create nfs-server
+./nfs-server.sh
 
 # Launch Metal-LB in kubernetes
 ./setup-metallb.sh

@@ -14,7 +14,7 @@ get_vm_ip() {
 # Check if VM exists, create if it doesn't
 if ! multipass info $VM_NAME >/dev/null 2>&1; then
   echo "Creating VM $VM_NAME..."
-  multipass launch --name $VM_NAME --cpus 4 --memory 8G --disk 100G 22.04
+  multipass launch --name $VM_NAME --cpus 3 --memory 4G --disk 144G 22.04
 else
   echo "VM $VM_NAME already exists, skipping creation."
 fi
