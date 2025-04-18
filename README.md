@@ -52,6 +52,13 @@ docker login <registry-address>:5000
 # Install kafka cluster
 ./setup-kafka-cluster.sh
 
+# Before running kafka connect verify existence of registry-auth
+ kubectl -n kafka get secret registry-auth
+ kubectl -n kafka get secret registry-auth -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
+
+# Copy secret from registry to kafka namespace so kafka connect could use it
+kubectl -n registry get secret registry-auth -o yaml | sed 's/namespace: registry/namespace: kafka/' | kubectl apply -f -
+
 # Run kafka connect builder
 kubectl apply -f ../yaml-scripts/kafka-connect.yaml -n kafka
 
