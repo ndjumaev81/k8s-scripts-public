@@ -6,7 +6,7 @@ metadata:
 spec:
   storageType: local  # Valid value per your earlier success
   storageConfig:
-    storageClassName: nfs-p501-retain  # Your NFS storage class
+    storageClassName: nfs-client-retain  # Your NFS storage class
     accessModes:
       - ReadWriteOnce
     resources:

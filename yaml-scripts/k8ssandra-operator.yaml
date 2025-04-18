@@ -12,7 +12,7 @@ spec:
         size: 3
         storageConfig:
           cassandraDataVolumeClaimSpec:
-            storageClassName: nfs-p501-retain
+            storageClassName: nfs-client-retain
             accessModes:
               - ReadWriteOnce
             resources:

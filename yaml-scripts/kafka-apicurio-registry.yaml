@@ -10,7 +10,7 @@ spec:
   resources:
     requests:
       storage: 5Gi
-  storageClassName: nfs-p999-retain
+  storageClassName: nfs-client-retain
 
 ---
 # PostgreSQL Deployment

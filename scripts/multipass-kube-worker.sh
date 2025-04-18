@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Check if all arguments are provided
-if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
+if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
     echo "Error: Address, token, discovery token hash, or host username not provided."
     echo "Usage: $0 <worker-address> <token> <discovery-token-ca-cert-hash>"
     exit 1
