@@ -18,13 +18,13 @@ cat /var/db/dhcpd_leases
 # Create dns-server based on CoreDns for multipass vms
 ./dns-server.sh
 
+# Create nfs-server
+./nfs-server.sh
+
 # Creates k8s-master 2 CPUs, 4GB memory and 10GB disk.
 ./launch-vm-1.sh 1 2 10 master
 # Creates k8s-workers 4 CPUs, 6GB memory and 10GB disk.
 ./launch-vm-1.sh 3 6 10 worker-1
-
-# Create nfs-server
-./nfs-server.sh
 
 # Re-run dns server script
 ./dns-server.sh
