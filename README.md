@@ -1,5 +1,19 @@
-# Install multipass
+# Reset multipass
+multipass list
+multipass stop --all
+multipass delete --all
+multipass purge
+multipass list
+brew uninstall multipass
+
 brew install --cask multipass
+multipass version
+
+# Clear DHCP leases:
+sudo rm -f /var/db/dhcpd_leases
+
+# Verify macos host DHCP lease file
+cat /var/db/dhcpd_leases
 
 # Create dns-server based on CoreDns for multipass vms
 ./dns-server.sh
