@@ -29,9 +29,6 @@ cat /var/db/dhcpd_leases
 # Re-run dns server script
 ./dns-server.sh
 
-# Launch NFS service on macos host
-./setup-nfs-macos-host.sh
-
 # Install kube control on multipass master vm instance 
 ./launch-kube-master.sh <github-username>
 
