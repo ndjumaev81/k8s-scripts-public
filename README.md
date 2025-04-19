@@ -154,3 +154,35 @@ curl -k http://192.168.64.106:5000/v2/_catalog
 curl -k -u dockerreguser:<password> http://192.168.64.106:5000/v2/_catalog
 curl -k -u dockerreguser:<password> http://192.168.64.106:5000/v2/my-oracle-connect/tags/list
 kubectl -n kafka get secret registry-auth -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
+
+# Run Oracle Database 23c Free
+# Pull the Image
+docker pull gvenzl/oracle-free:latest
+# Create a Docker Volume
+docker volume create oracle_data
+# Run the Container with a simple configuration:
+# -e ORACLE_PASSWORD: Set the SYS/SYSTEM password (must meet complexity requirements, e.g., Oracle_123)
+# Note: The default SID is FREE, and the default PDB is FREEPDB1.
+docker run -d \
+  --name oracle_db \
+  -p 1521:1521 \
+  -e ORACLE_PASSWORD=Oracle_123 \
+  -v oracle_data:/opt/oracle/oradata \
+  gvenzl/oracle-free:latest
+
+# Monitor Initialization
+docker logs -f oracle_db
+# Look for:
+DATABASE IS READY TO USE!
+# Connect to the Database
+docker exec -it oracle_db sqlplus / as sysdba
+# Verify the database status
+# Should show FREE and OPEN.
+SELECT INSTANCE_NAME, STATUS FROM V$INSTANCE;
+# Switch to the PDB
+ALTER SESSION SET CONTAINER = FREEPDB1;
+# Create a New User/Schema
+CREATE USER wefox IDENTIFIED BY changeit;
+GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, CREATE PROCEDURE, CREATE TRIGGER, CREATE VIEW TO wefox;
+GRANT SELECT ANY TABLE, INSERT ANY TABLE, UPDATE ANY TABLE, DELETE ANY TABLE, DROP ANY TABLE, ALTER ANY TABLE TO wefox;
+GRANT UNLIMITED TABLESPACE TO wefox;
