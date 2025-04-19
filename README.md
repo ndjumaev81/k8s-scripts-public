@@ -137,7 +137,13 @@ multipass exec k8s-worker-3 -- cat /tmp/default.toml
 containerd config default > default.toml
 
 # Verify toml file after resetting:
-multipass exec k8s-worker-3 -- cat /etc/containerd/config.toml
+multipass exec k8s-master -- cat /etc/containerd/config.toml
+
+# Append mirrors to toml files
+./update-multipass-toml.sh 192.168.64.106:5000
+
+# Verify mirrors
+multipass exec $node -- containerd config dump | grep -A 5 "registry.mirrors"
 
 # Run kafka connect builder
 kubectl apply -f ../yaml-scripts/kafka-connect.yaml -n kafka
