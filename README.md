@@ -186,3 +186,35 @@ CREATE USER wefox IDENTIFIED BY changeit;
 GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, CREATE PROCEDURE, CREATE TRIGGER, CREATE VIEW TO wefox;
 GRANT SELECT ANY TABLE, INSERT ANY TABLE, UPDATE ANY TABLE, DELETE ANY TABLE, DROP ANY TABLE, ALTER ANY TABLE TO wefox;
 GRANT UNLIMITED TABLESPACE TO wefox;
+
+# Check if the Oracle database is running and listening on port 1521:
+kubectl run -i --tty --rm debug --image=busybox --restart=Never -- sh
+# Inside the debug pod:
+wget -qO- <oracle_ip_address>:1521
+
+# Since curl telnet isn’t supported, use nc (netcat) to test connectivity:
+# Expected output:
+# Ncat: Version 7.92 ( https://nmap.org/ncat )
+# Ncat: Connected to 172.24.58.225:1521.
+nodirdjumaev@DjumaevN scripts % kubectl exec -it my-connect-connect-0 -n kafka -- nc -v 172.24.58.225 1521
+
+# Delete secret:
+kubectl delete secret oracle-credentials -n kafka
+# Create secret for password:
+kubectl create secret generic oracle-credentials -n kafka --from-literal=password=changeit
+# Multiple secret passwords:
+kubectl create secret generic oracle-credentials -n kafka \
+  --from-literal=password_db1=changeit \
+  --from-literal=password_db2=anotherpass
+# Edit the Existing Secret:
+kubectl edit secret oracle-credentials -n kafka
+# In the editor, modify the data section to include both passwords (base64-encoded).
+
+# Patch the secret:
+kubectl patch secret oracle-credentials -n kafka -p '{"data":{"password_wefo4":"'$(echo -n 'changeit' | base64)'","password_wefox":"'$(echo -n 'changeit' | base64)'"}}'
+
+# Verify the secret:
+kubectl get secret oracle-credentials -n kafka -o jsonpath='{.data}' | jq -r .
+
+# Apply the KafkaConnector: Save the YAML to test-oracle-jdbc-source.yaml and apply:
+kubectl apply -f ../temp/test-oracle-jdbc-source.yaml -n kafka
