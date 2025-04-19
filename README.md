@@ -199,7 +199,7 @@ wget -qO- <oracle_ip_address>:1521
 # Expected output:
 # Ncat: Version 7.92 ( https://nmap.org/ncat )
 # Ncat: Connected to 172.24.58.225:1521.
-nodirdjumaev@DjumaevN scripts % kubectl exec -it my-connect-connect-0 -n kafka -- nc -v 172.24.58.225 1521
+kubectl exec -it my-connect-connect-0 -n kafka -- nc -v 172.24.58.225 1521
 
 # Delete secret:
 kubectl delete secret oracle-credentials -n kafka
