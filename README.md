@@ -187,6 +187,9 @@ GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, CREATE PROCEDURE, CREATE TR
 GRANT SELECT ANY TABLE, INSERT ANY TABLE, UPDATE ANY TABLE, DELETE ANY TABLE, DROP ANY TABLE, ALTER ANY TABLE TO wefox;
 GRANT UNLIMITED TABLESPACE TO wefox;
 
+ALTER SESSION SET CONTAINER = FREEPDB1;
+ALTER USER WEFOX QUOTA UNLIMITED ON USERS;
+
 # Check if the Oracle database is running and listening on port 1521:
 kubectl run -i --tty --rm debug --image=busybox --restart=Never -- sh
 # Inside the debug pod:
@@ -218,3 +221,22 @@ kubectl get secret oracle-credentials -n kafka -o jsonpath='{.data}' | jq -r .
 
 # Apply the KafkaConnector: Save the YAML to test-oracle-jdbc-source.yaml and apply:
 kubectl apply -f ../temp/test-oracle-jdbc-source.yaml -n kafka
+
+# If no logs appear for oracle-jdbc-source, the connector may not be running. Verify:
+kubectl get kafkaconnectors -n kafka
+kubectl describe kafkaconnector oracle-jdbc-source -n kafka
+
+# Inspect the Kafka Topic
+# Consume Messages from the Topic: Use the Kafka consumer to read messages:
+# Expected Output:
+# {"legacy_id": 1, "column1": "value1", ...}
+kubectl exec -it my-cluster-kafka-0 -n kafka -- kafka-console-consumer.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --topic oracle-report_sends \
+  --from-beginning
+
+# Check Topic Existence: Verify the topic exists:
+# If missing, the connector hasn’t created it, indicating it never started processing.
+kubectl exec -it my-cluster-kafka-0 -n kafka -- kafka-topics.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --list | grep oracle-report_sends
