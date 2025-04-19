@@ -43,33 +43,11 @@ cat /var/db/dhcpd_leases
 kubectl get ipaddresspool -n metallb-system
 kubectl get l2advertisement -n metallb-system
 
-# Launch docker registry in kubernetes
-./setup-docker-registry.sh
-
-# Verify docker registry
-docker login <registry-address>:5000
-
-# Install kafka cluster
-./setup-kafka-cluster.sh
-
-# Before running kafka connect verify existence of registry-auth
- kubectl -n kafka get secret registry-auth
- kubectl -n kafka get secret registry-auth -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
-
-# Copy secret from registry to kafka namespace so kafka connect could use it
-kubectl -n registry get secret registry-auth -o yaml | sed 's/namespace: registry/namespace: kafka/' | kubectl apply -f -
-
-# Run kafka connect builder
-kubectl apply -f ../yaml-scripts/kafka-connect.yaml -n kafka
-
-
 # Check the NFS server for existing PVs:
 kubectl get pv -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.nfs.server}{"\t"}{.spec.nfs.path}{"\n"}{end}'
 
 # Identify PVCs for your services:
 kubectl get pvc --all-namespaces
-
-multipass launch 22.04 --name nfs-server --cpus 4 --memory 8G --disk 100G
 
 # Helm commands
 # Persist Kubeconfig: Add export KUBECONFIG="$HOME/.kube/config" to your shell profile ~/.zshrc
@@ -133,3 +111,40 @@ multipass exec nfs-server -- cat /srv/nfs/pvc-<uuid>/test.txt
 # Look for successful mounts to 192.168.64.X:/srv/nfs/pvc-<uuid>
 kubectl -n nfs-provisioning get pods
 kubectl -n nfs-provisioning logs -l app=nfs-subdir-external-provisioner
+
+# Launch docker registry in kubernetes
+./setup-docker-registry.sh
+
+# Verify docker registry
+docker login <registry-address>:5000
+
+# Install kafka cluster
+./setup-kafka-cluster.sh
+
+# Before running kafka connect verify existence of registry-auth
+ kubectl -n kafka get secret registry-auth
+ kubectl -n kafka get secret registry-auth -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
+
+# Copy secret from registry to kafka namespace so kafka connect could use it
+kubectl -n registry get secret registry-auth -o yaml | sed 's/namespace: registry/namespace: kafka/' | kubectl apply -f -
+
+# Update toml files on each multipass kube vm to support insecure connection to registry.
+# To see the default configuration:
+multipass exec k8s-worker-3 -- containerd config default > /tmp/default.toml
+multipass exec k8s-worker-3 -- cat /tmp/default.toml
+
+# You can generate the default configuration using (in case of any issues with containerd service):
+containerd config default > default.toml
+
+# Verify toml file after resetting:
+multipass exec k8s-worker-3 -- cat /etc/containerd/config.toml
+
+# Run kafka connect builder
+kubectl apply -f ../yaml-scripts/kafka-connect.yaml -n kafka
+
+# Verify that builder is running
+kubectl -n kafka get pods | grep my-connect-connect-build
+curl -k http://192.168.64.106:5000/v2/_catalog
+curl -k -u dockerreguser:<password> http://192.168.64.106:5000/v2/_catalog
+curl -k -u dockerreguser:<password> http://192.168.64.106:5000/v2/my-oracle-connect/tags/list
+kubectl -n kafka get secret registry-auth -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d
