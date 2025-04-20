@@ -240,3 +240,27 @@ kubectl exec -it my-cluster-kafka-0 -n kafka -- kafka-console-consumer.sh \
 kubectl exec -it my-cluster-kafka-0 -n kafka -- kafka-topics.sh \
   --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
   --list | grep oracle-report_sends
+
+# Use Kafka Connect REST API: Query the connector’s status to see if it’s reporting topic-related errors:
+kubectl exec -it my-connect-connect-0 -n kafka -- curl http://localhost:8083/connectors/oracle-jdbc-source/status
+
+# Run Kafka Client Pod:
+kubectl run -i --tty --rm kafka-client --image=bitnami/kafka:3.9.0 --namespace=kafka -- bash
+# List Topics: Inside the pod:
+/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 --list | grep oracle-REPORT_SENDS
+# Create the Topic
+/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --create \
+  --topic oracle-REPORT_SENDS \
+  --partitions 1 \
+  --replication-factor 3
+
+
+# Run Kafka Client Pod: Use the bitnami/kafka:3.9.0 image, which includes Kafka tools:
+kubectl run -i --tty --rm kafka-client --image=bitnami/kafka:3.9.0 --namespace=kafka -- bash
+
+# Consume Messages: Inside the pod:
+/opt/bitnami/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --topic oracle-REPORT_SENDS \
+  --from-beginning
