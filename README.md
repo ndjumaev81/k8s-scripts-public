@@ -328,3 +328,20 @@ kubectl exec -it my-connect-connect-0 -n kafka -- df -h /opt/kafka/custom-logs
 kubectl exec -it my-connect-connect-0 -n kafka -- ls -lh /opt/kafka/custom-logs
 ssh nfs-server.example.com
 du -sh /exports/kafka-logs
+
+# List kafka connects
+kubectl get kafkaconnects -n kafka
+# Delete kafka connect
+kubectl delete kafkaconnect my-connect -n kafka
+# Check if the oracle-credentials Secret exists in the kafka namespace:
+kubectl get secret oracle-credentials -n kafka -o yaml
+# Check the password_wefox key and its value:
+kubectl get secret oracle-credentials -n kafka -o jsonpath='{.data.password_wefox}' | base64 -d
+
+# To get secrets work in kafka-connect, apply the following:
+# 1. Create a Role for Secret Access
+# 2. Create a RoleBinding
+# 3. Apply the RBAC Configuration
+kubectl apply -f ../yaml-scripts/kafka-connect-secret-reader.yaml -n kafka
+# 4. Verify Permissions
+kubectl get secret oracle-credentials -n kafka -o jsonpath='{.data.password_wefox}' --as=system:serviceaccount:kafka:my-connect-connect

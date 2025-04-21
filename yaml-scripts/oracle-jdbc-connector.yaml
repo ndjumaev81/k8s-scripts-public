@@ -9,11 +9,14 @@ spec:
   class: io.confluent.connect.jdbc.JdbcSourceConnector
   tasksMax: 1
   config:
-    connection.url: "jdbc:oracle:thin:@//oracle-host:1521/service_name"
-    connection.user: "your_username"
-    connection.password: "your_password"
+    connection.url: "jdbc:oracle:thin:@//192.168.64.1:1521/FREEPDB1"
+    connection.user: "wefox"
+    connection.password: "${secret:oracle-credentials:password}"
     mode: "incrementing"
-    incrementing.column.name: "id"
-    table.whitelist: "your_table_name"
+    incrementing.column.name: "LEGACY_ID"
+    table.whitelist: "REPORT_SENDS"
     topic.prefix: "oracle-"
     poll.interval.ms: "5000"
+    schema.pattern: "WEFOX"
+    numeric.mapping: "best_fit"
+    driver.class: "oracle.jdbc.OracleDriver"
