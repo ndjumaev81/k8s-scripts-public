@@ -264,3 +264,67 @@ kubectl run -i --tty --rm kafka-client --image=bitnami/kafka:3.9.0 --namespace=k
   --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
   --topic oracle-REPORT_SENDS \
   --from-beginning
+
+# Step 1: Delete and Recreate the Topic
+# 1. Deploy a Kafka Client Pod with Tools
+kubectl run -i --tty --rm kafka-client --image=bitnami/kafka:3.9.0 --namespace=kafka -- bash
+
+# 2. Delete the Topic
+/opt/bitnami/kafka/bin/kafka-topics.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --delete \
+  --topic oracle-REPORT_SENDS
+
+# Verify Deletion:
+/opt/bitnami/kafka/bin/kafka-topics.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --list | grep oracle-REPORT_SENDS
+
+# 3. Recreate the Topic
+/opt/bitnami/kafka/bin/kafka-topics.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --create \
+  --topic oracle-REPORT_SENDS \
+  --partitions 1 \
+  --replication-factor 2
+
+# Step 2: Reset the Connector’s Offset
+# 1. Stop the Connector
+kubectl exec -it my-connect-connect-0 -n kafka -- curl -X PUT \
+  http://localhost:8083/connectors/oracle-jdbc-source/pause
+# Verify:
+kubectl exec -it my-connect-connect-0 -n kafka -- curl \
+  http://localhost:8083/connectors/oracle-jdbc-source/status
+
+# 2. Delete the Connector’s Offset
+/opt/bitnami/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --topic connect-offsets \
+  --from-beginning \
+  --formatter "kafka.coordinator.group.GroupMetadataManager\$OffsetsMessageFormatter"
+
+# Delete the Offset:
+echo '["oracle-jdbc-source",{"table":"REPORT_SENDS"}]:null' | \
+  /opt/bitnami/kafka/bin/kafka-console-producer.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --topic connect-offsets \
+  --property parse.key=true \
+  --property key.separator=:
+
+# Step 3: Verify the Connector Re-Reads the Row
+# 1. Resume the Connector (if Paused)
+kubectl exec -it my-connect-connect-0 -n kafka -- curl -X PUT \
+  http://localhost:8083/connectors/oracle-jdbc-source/resume
+# 2. Monitor Logs
+kubectl logs -n kafka my-connect-connect-0 --follow
+# 3. Consume the Message
+kubectl run -i --tty --rm kafka-client --image=bitnami/kafka:3.9.0 --namespace=kafka -- bash
+/opt/bitnami/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --topic oracle-REPORT_SENDS \
+  --from-beginning
+# Step 4: Ensure NFS Logging is Active
+kubectl exec -it my-connect-connect-0 -n kafka -- df -h /opt/kafka/custom-logs
+kubectl exec -it my-connect-connect-0 -n kafka -- ls -lh /opt/kafka/custom-logs
+ssh nfs-server.example.com
+du -sh /exports/kafka-logs
