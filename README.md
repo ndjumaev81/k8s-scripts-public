@@ -232,14 +232,14 @@ kubectl describe kafkaconnector oracle-jdbc-source -n kafka
 # {"legacy_id": 1, "column1": "value1", ...}
 kubectl exec -it my-cluster-kafka-0 -n kafka -- kafka-console-consumer.sh \
   --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
-  --topic oracle-report_sends \
+  --topic oracle-REPORT_SENDS \
   --from-beginning
 
 # Check Topic Existence: Verify the topic exists:
 # If missing, the connector hasn’t created it, indicating it never started processing.
 kubectl exec -it my-cluster-kafka-0 -n kafka -- kafka-topics.sh \
   --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
-  --list | grep oracle-report_sends
+  --list | grep oracle-REPORT_SENDS
 
 # Use Kafka Connect REST API: Query the connector’s status to see if it’s reporting topic-related errors:
 kubectl exec -it my-connect-connect-0 -n kafka -- curl http://localhost:8083/connectors/oracle-jdbc-source/status
@@ -385,5 +385,11 @@ kubectl run -i --tty --rm kafka-client --image=bitnami/kafka:3.9.0 --namespace=k
   --replication-factor 3 \
   --config cleanup.policy=compact
 
+# The connector will not retry automatically because it’s in a FAILED state due to a startup error.
 # Use the Kafka Connect REST API to check the connector’s status:
+# 1. Check Connector Status
+kubectl exec -it my-connect-connect-0 -n kafka -- curl http://localhost:8083/connectors/oracle-jdbc-source/status
+# 2. Restart the Connector
+kubectl exec -it my-connect-connect-0 -n kafka -- curl -X POST http://localhost:8083/connectors/oracle-jdbc-source/restart
+# 3. Verify Status
 kubectl exec -it my-connect-connect-0 -n kafka -- curl http://localhost:8083/connectors/oracle-jdbc-source/status

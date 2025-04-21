@@ -1,0 +1,23 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnector
+metadata:
+  name: wefo4-oracle-jdbc-source
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-connect
+spec:
+  class: io.confluent.connect.jdbc.JdbcSourceConnector
+  tasksMax: 1
+  config:
+    connection.url: "jdbc:oracle:thin:@//172.24.58.225:1521/dbdev.dc.local"
+    connection.user: "wefo4"
+    connection.password: "${secrets:kafka/oracle-credentials:password_wefo4}"
+    mode: "incrementing"
+    incrementing.column.name: "LEGACY_ID"
+    table.whitelist: "REPORT_SENDS"
+    topic.prefix: "oracle-wefo4-"
+    poll.interval.ms: "5000"
+    batch.max.rows: "1000"
+    schema.pattern: "WEFO4"
+    numeric.mapping: "best_fit"
+    driver.class: "oracle.jdbc.OracleDriver"
