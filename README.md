@@ -345,3 +345,41 @@ kubectl get secret oracle-credentials -n kafka -o jsonpath='{.data.password_wefo
 kubectl apply -f ../yaml-scripts/kafka-connect-secret-reader.yaml -n kafka
 # 4. Verify Permissions
 kubectl get secret oracle-credentials -n kafka -o jsonpath='{.data.password_wefox}' --as=system:serviceaccount:kafka:my-connect-connect
+
+
+# Step 1: Delete and Recreate the Topic
+# 1. Deploy a Kafka Client Pod with Tools
+kubectl run -i --tty --rm kafka-client --image=bitnami/kafka:3.9.0 --namespace=kafka -- bash
+# 2. Delete the Topic
+/opt/bitnami/kafka/bin/kafka-topics.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --delete \
+  --topic oracle-REPORT_SENDS
+# Verify Deletion:
+/opt/bitnami/kafka/bin/kafka-topics.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --list | grep oracle-REPORT_SENDS
+# 3. Recreate the Topic
+/opt/bitnami/kafka/bin/kafka-topics.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --create \
+  --topic oracle-REPORT_SENDS \
+  --partitions 1 \
+  --replication-factor 3  
+# Step 2: Reset the Connector’s Offset
+# Option 1: Delete the connect-offsets Topic (Simplest)
+/opt/bitnami/kafka/bin/kafka-topics.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --delete \
+  --topic connect-offsets
+# Verify Deletion:
+/opt/bitnami/kafka/bin/kafka-topics.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --list | grep connect-offsets
+# Recreate the Topic: Kafka Connect will recreate connect-offsets when it starts, but you can pre-create it:
+/opt/bitnami/kafka/bin/kafka-topics.sh \
+  --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 \
+  --create \
+  --topic connect-offsets \
+  --partitions 50 \
+  --replication-factor 3
