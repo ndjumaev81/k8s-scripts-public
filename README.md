@@ -382,4 +382,8 @@ kubectl run -i --tty --rm kafka-client --image=bitnami/kafka:3.9.0 --namespace=k
   --create \
   --topic connect-offsets \
   --partitions 50 \
-  --replication-factor 3
+  --replication-factor 3 \
+  --config cleanup.policy=compact
+
+# Use the Kafka Connect REST API to check the connector’s status:
+kubectl exec -it my-connect-connect-0 -n kafka -- curl http://localhost:8083/connectors/oracle-jdbc-source/status
