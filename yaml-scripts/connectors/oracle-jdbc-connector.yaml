@@ -11,7 +11,7 @@ spec:
   config:
     connection.url: "jdbc:oracle:thin:@//192.168.64.1:1521/FREEPDB1"
     connection.user: "wefox"
-    connection.password: "${secret:oracle-credentials:password}"
+    connection.password: "${secrets:kafka/oracle-credentials:password_wefox}"
     mode: "incrementing"
     incrementing.column.name: "LEGACY_ID"
     table.whitelist: "REPORT_SENDS"

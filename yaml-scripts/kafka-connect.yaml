@@ -10,6 +10,8 @@ spec:
   replicas: 1 # Adjust as needed
   bootstrapServers: my-cluster-kafka-bootstrap.kafka.svc:29092 # Points to your Kafka cluster's external listener
   config:
+    config.providers: "secrets"
+    config.providers.secrets.class: "io.strimzi.kafka.KubernetesSecretConfigProvider"  
     group.id: connect-cluster
     offset.storage.topic: connect-offsets
     config.storage.topic: connect-configs
@@ -22,6 +24,7 @@ spec:
     offset.storage.replication.factor: 3
     status.storage.replication.factor: 3
     plugin.path: /opt/kafka/plugins
+    plugin.discovery: "only_scan"
   logging:
     type: inline
     loggers:
