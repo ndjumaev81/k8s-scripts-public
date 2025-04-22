@@ -1,3 +1,8 @@
+# Select the SASL mechanism as "SCRAM-SHA-512" (since your Kafka cluster uses this).
+# Retrieve the password from the my-connect-user secret, which was created by the KafkaUser resource in kafka-connect.yaml
+kubectl get secret my-connect-user -n kafka -o jsonpath='{.data.password}' | base64 -d
+
+
 kubectl run -i --tty --rm kafka-client --image=bitnami/kafka:3.9.0 --namespace=kafka -- bash
 
 # Add ACL

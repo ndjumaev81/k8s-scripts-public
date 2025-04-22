@@ -25,7 +25,7 @@ spec:
     username: my-connect-user
     passwordSecret:
       secretName: my-connect-user
-      key: password  
+      password: password
   config:
     config.providers: "secrets"
     config.providers.secrets.class: "io.strimzi.kafka.KubernetesSecretConfigProvider"  
