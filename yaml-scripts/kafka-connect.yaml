@@ -1,4 +1,15 @@
 apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: my-connect-user
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: my-cluster
+spec:
+  authentication:
+    type: scram-sha-512
+---
+apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaConnect
 metadata:
   name: my-connect
@@ -9,6 +20,12 @@ spec:
   version: 3.9.0 # Match your Kafka version
   replicas: 1 # Adjust as needed
   bootstrapServers: my-cluster-kafka-bootstrap.kafka.svc:29092 # Points to your Kafka cluster's external listener
+  authentication:
+    type: scram-sha-512
+    username: my-connect-user
+    passwordSecret:
+      secretName: my-connect-user
+      key: password  
   config:
     config.providers: "secrets"
     config.providers.secrets.class: "io.strimzi.kafka.KubernetesSecretConfigProvider"  

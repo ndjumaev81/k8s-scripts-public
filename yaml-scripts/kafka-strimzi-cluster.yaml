@@ -12,10 +12,14 @@ spec:
         port: 29092
         type: internal
         tls: false
+        authentication:
+          type: scram-sha-512
       - name: external
         port: 9092
         type: loadbalancer
         tls: false
+        authentication:
+          type: scram-sha-512
         configuration:
           bootstrap:
             loadBalancerIP: "192.168.64.100" # Fixed IP for bootstrap
@@ -23,6 +27,7 @@ spec:
       log.retention.hours: 168
       log.retention.bytes: 838860800
       auto.create.topics.enable: false
+      authorizer.class.name: kafka.security.authorizer.AclAuthorizer
       inter.broker.listener.name: "internal"
       offsets.topic.replication.factor: 3
       transaction.state.log.replication.factor: 3

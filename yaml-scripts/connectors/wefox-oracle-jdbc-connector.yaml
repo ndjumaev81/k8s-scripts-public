@@ -1,7 +1,7 @@
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaConnector
 metadata:
-  name: oracle-jdbc-source
+  name: wefox-oracle-jdbc-source
   namespace: kafka
   labels:
     strimzi.io/cluster: my-connect
@@ -15,8 +15,18 @@ spec:
     mode: "incrementing"
     incrementing.column.name: "LEGACY_ID"
     table.whitelist: "REPORT_SENDS"
-    topic.prefix: "oracle-"
+    topic.prefix: "ORA_TABLE_"
     poll.interval.ms: "5000"
     schema.pattern: "WEFOX"
     numeric.mapping: "best_fit"
     driver.class: "oracle.jdbc.OracleDriver"
+    # Schema Registry Configuration
+    key.converter: "org.apache.kafka.connect.storage.StringConverter"
+    value.converter: "io.apicurio.registry.serde.avro.AvroConverter"
+    value.converter.schema.registry.url: "http://192.168.64.103:8282/apis/registry/v2"
+    value.converter.auto.register.schemas: "true"
+    value.converter.use.latest.version: "true"
+    value.converter.max.schemas.per.subject: "1000"
+    topic.creation.enable: true
+    topic.creation.default.partitions: 1
+    topic.creation.default.replication.factor: 3    
