@@ -385,7 +385,7 @@ kubectl get pods -n k8ssandra-operator
 # Install k8ssandra cluster
 kubectl apply -f k8ssandra-operator.yaml -n k8ssandra-operator
 
-# Checl taints
+# Check taints
 kubectl describe nodes | grep -i taint
 
 # Inspect Pending Pods

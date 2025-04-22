@@ -393,3 +393,143 @@ kubectl exec -it my-connect-connect-0 -n kafka -- curl http://localhost:8083/con
 kubectl exec -it my-connect-connect-0 -n kafka -- curl -X POST http://localhost:8083/connectors/oracle-jdbc-source/restart
 # 3. Verify Status
 kubectl exec -it my-connect-connect-0 -n kafka -- curl http://localhost:8083/connectors/oracle-jdbc-source/status
+
+
+# CASSANDRA
+# Do below commands from host machine.
+# Add the Cert-Manager Helm Repository:
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+# Install Cert-Manager:
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --kubeconfig ~/.kube/config \
+  --version v1.14.4 \
+  --set installCRDs=true \
+  --kube-context multipass-cluster
+
+# Verify Cert-Manager: Wait for the pods to be ready:
+kubectl get pods -n cert-manager
+
+# K8ssandra Operator Installation
+helm install k8ssandra-operator k8ssandra/k8ssandra-operator \
+  --namespace k8ssandra-operator \
+  --create-namespace \
+  --kubeconfig ~/.kube/config \
+  --kube-context multipass-cluster \
+  --debug
+
+# OPTION: uninstall if needed
+helm uninstall k8ssandra-operator \
+  --namespace k8ssandra-operator \
+  --kubeconfig ~/.kube/config \
+  --kube-context multipass-cluster \
+  --debug
+
+# Verify the Installation
+kubectl get pods -n k8ssandra-operator
+
+# Install k8ssandra cluster
+kubectl apply -f k8ssandra-operator.yaml -n k8ssandra-operator
+
+# Check taints
+kubectl describe nodes | grep -i taint
+
+# Inspect Pending Pods
+kubectl get pods -n k8ssandra-operator --field-selector=status.phase!=Running
+
+# Understanding the Stargate Service
+# exposes the following ports:
+# 8080: REST API endpoint
+# 8081: GraphQL API endpoint
+# 8082: Stargate Admin API
+# 8084: Health check endpoint
+# 8085: Metrics endpoint
+# 8090: Swagger UI (this is likely what you want for browser access)
+# 9042: Native CQL (Cassandra Query Language) port
+
+# Get stargate pod name
+kubectl get pods -n k8ssandra-operator
+
+# VALID SEED SERVICE ENDPOINT: 
+# demo-seed-service.k8ssandra-operator.svc.cluster.local
+# The demo-seed-service is a headless service created by the K8ssandra operator to provide a stable DNS entry for the seed nodes of the demo cluster.
+kubectl get endpoints demo-seed-service -n k8ssandra-operator -o yaml
+
+# Inspect Pod Labels
+# Run the following command to view the full details of the pod, including its labels:
+kubectl get pod demo-dc1-default-stargate-deployment-XXXXXXXX -n k8ssandra-operator -o yaml
+
+# Look for the metadata.labels section in the output. Alternatively, for a more concise view, use:
+kubectl get pod demo-dc1-default-stargate-deployment-58c75d8b7f-w5m76 -n k8ssandra-operator -o jsonpath='{.metadata.labels}'
+
+# Get username
+CASS_USERNAME=$(kubectl get secret demo-superuser -n k8ssandra-operator -o=jsonpath='{.data.username}' | base64 --decode)
+echo $CASS_USERNAME
+
+# Get password
+CASS_PASSWORD=$(kubectl get secret demo-superuser -n k8ssandra-operator -o=jsonpath='{.data.password}' | base64 --decode)
+echo $CASS_PASSWORD
+
+# Verify cluster status
+kubectl exec -it demo-dc1-default-sts-0 -n k8ssandra-operator -c cassandra -- nodetool -u $CASS_USERNAME -pw $CASS_PASSWORD status
+
+# K8ssandra swagger-ui port is 8082:
+Access Document Data API
+Access REST Data API
+Access GraphQL Data API
+
+Stargate swagger UI: http://192.168.64.104:8082/swagger-ui
+GraphQL Playground: http://192.168.64.104:8080/playground
+
+curl -L -X POST 'http://192.168.64.104:8081/v1/auth' -H 'Content-Type: application/json' --data-raw '{"username": "<k8ssandra-username>", "password": "<k8ssandra-password>"}'
+
+# The default ports assignments align to the following services and interfaces:
+Port Service/Interface
+8080 GraphQL interface for CRUD
+8081 REST authorization service for generating authorization tokens
+8082 REST interface for CRUD
+8084 Health check (/healthcheck, /checker/liveness, /checker/readiness) and metrics (/metrics)
+8180 Document API interface for CRUD
+8090 gRPC interface for CRUD
+9042 CQL service
+
+# REAPER
+kubectl apply -f k8ssandra-reaper.yaml
+# The Reaper custom resource itself provides status information about its deployment.
+kubectl get reaper cp-reaper -n k8ssandra-operator
+# For more details:
+kubectl describe reaper cp-reaper -n k8ssandra-operator
+# The k8ssandra-operator creates a pod to run the Reaper application.
+kubectl get pods -n k8ssandra-operator | grep reaper
+# To see more details:
+kubectl describe pod cp-reaper-0 -n k8ssandra-operator
+# Check Persistent Volume Claims (PVCs)
+kubectl get pvc -n k8ssandra-operator
+# For more info:
+kubectl describe pvc reaper-data-cp-reaper-0 -n k8ssandra-operator
+
+# A Kubernetes Service is created to expose Reaper’s HTTP management interface (since httpManagement: enabled)
+kubectl get svc -n k8ssandra-operator | grep reaper
+# Details:
+kubectl describe svc cp-reaper-service -n k8ssandra-operator
+# Verify Integration with K8ssandraCluster
+kubectl get k8ssandracluster demo -n k8ssandra-operator
+# WebUI of Reaper
+kubectl port-forward svc/cp-reaper-service 8080:8080 -n k8ssandra-operator
+# Accessible via the following:
+http://localhost:8080/webui
+
+# Extract the JMX Username and Password
+# Describe the Secret:
+kubectl get secret -n k8ssandra-operator
+# Decode the Username:
+kubectl get secret demo-superuser -n k8ssandra-operator -o jsonpath='{.data.username}' | base64 -d
+# Decode the Password:
+kubectl get secret demo-superuser -n k8ssandra-operator -o jsonpath='{.data.password}' | base64 -d
+
+# Verify Reaper’s Configuration
+# Check the Reaper Pod’s Configuration
+kubectl exec -it cp-reaper-0 -n k8ssandra-operator -- /bin/sh
