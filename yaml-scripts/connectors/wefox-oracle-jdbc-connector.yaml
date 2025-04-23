@@ -20,13 +20,12 @@ spec:
     schema.pattern: "WEFOX"
     numeric.mapping: "best_fit"
     driver.class: "oracle.jdbc.OracleDriver"
-    # Schema Registry Configuration
     key.converter: "org.apache.kafka.connect.storage.StringConverter"
-    value.converter: "io.apicurio.registry.serde.avro.AvroConverter"
-    value.converter.schema.registry.url: "http://192.168.64.103:8282/apis/registry/v2"
-    value.converter.auto.register.schemas: "true"
-    value.converter.use.latest.version: "true"
-    value.converter.max.schemas.per.subject: "1000"
+    value.converter: "io.apicurio.registry.serde.jsonschema.JsonSchemaKafkaConnectConverter"
+    value.converter.apicurio.registry.url: "http://192.168.64.103:8282/apis/registry/v2"
+    value.converter.apicurio.registry.auto-register: true
+    value.converter.apicurio.registry.use-latest-version: true
+    value.converter.apicurio.registry.max-schemas-per-subject: 1000
     topic.creation.enable: true
     topic.creation.default.partitions: 1
-    topic.creation.default.replication.factor: 3    
+    topic.creation.default.replication.factor: 3
