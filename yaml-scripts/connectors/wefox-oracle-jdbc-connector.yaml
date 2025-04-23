@@ -20,8 +20,8 @@ spec:
     schema.pattern: "WEFOX"
     numeric.mapping: "best_fit"
     driver.class: "oracle.jdbc.OracleDriver"
-    key.converter: "org.apache.kafka.connect.storage.StringConverter"
-    value.converter: "io.confluent.connect.json.JsonSchemaConverter"
+    key.converter: org.apache.kafka.connect.storage.StringConverter
+    value.converter: io.confluent.connect.json.JsonSchemaConverter
     value.converter.apicurio.registry.url: "http://192.168.64.103:8282/apis/registry/v2"
     value.converter.apicurio.registry.auto-register: true
     value.converter.apicurio.registry.use-latest-version: true

@@ -72,14 +72,14 @@ spec:
       - name: confluent-json-schema-converter
         artifacts:
           - type: jar
-            url: https://packages.confluent.io/maven/io/confluent/kafka-connect-json-schema-converter/7.7.0/kafka-connect-json-schema-converter-7.7.0.jar
-            fileName: kafka-connect-json-schema-7.7.0.jar
+            url: https://packages.confluent.io/maven/io/confluent/kafka-connect-json-schema-converter/7.9.0/kafka-connect-json-schema-converter-7.9.0.jar
+            fileName: kafka-connect-json-schema-converter-7.9.0.jar
           - type: jar
-            url: https://packages.confluent.io/maven/io/confluent/kafka-schema-registry-client/7.7.0/kafka-schema-registry-client-7.7.0.jar
-            fileName: kafka-schema-registry-client-7.7.0.jar
+            url: https://packages.confluent.io/maven/io/confluent/kafka-schema-registry-client/7.9.0/kafka-schema-registry-client-7.9.0.jar
+            fileName: kafka-schema-registry-client-7.9.0.jar
           - type: jar
-            url: https://packages.confluent.io/maven/io/confluent/common-config/7.7.0/common-config-7.7.0.jar
-            fileName: common-config-7.7.0.jar
+            url: https://packages.confluent.io/maven/io/confluent/common-config/7.9.0/common-config-7.9.0.jar
+            fileName: common-config-7.9.0.jar
           - type: jar
-            url: https://packages.confluent.io/maven/io/confluent/common-utils/7.7.0/common-utils-7.7.0.jar
-            fileName: common-utils-7.7.0.jar
+            url: https://packages.confluent.io/maven/io/confluent/common-utils/7.9.0/common-utils-7.9.0.jar
+            fileName: common-utils-7.9.0.jar
