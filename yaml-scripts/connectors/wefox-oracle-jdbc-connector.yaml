@@ -21,8 +21,11 @@ spec:
     numeric.mapping: "best_fit"
     driver.class: "oracle.jdbc.OracleDriver"
     key.converter: org.apache.kafka.connect.storage.StringConverter
-    value.converter: io.confluent.connect.json.JsonSchemaConverter
+    value.converter: io.apicurio.registry.utils.converter.ExtJsonConverter
     value.converter.apicurio.registry.url: "http://192.168.64.103:8282/apis/registry/v2"
+    value.converter.apicurio.registry.converter.serializer: io.apicurio.registry.utils.serde.JsonSchemaKafkaSerializer
+    value.converter.apicurio.registry.converter.deserializer: io.apicurio.registry.utils.serde.JsonSchemaKafkaDeserializer
+    value.converter.apicurio.registry.artifact-resolver-strategy: io.apicurio.registry.serde.strategy.TopicIdStrategy
     value.converter.apicurio.registry.auto-register: true
     value.converter.apicurio.registry.use-latest-version: true
     value.converter.apicurio.registry.max-schemas-per-subject: 1000
