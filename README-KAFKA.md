@@ -127,3 +127,8 @@ kubectl run -i --tty --rm kafka-client \
 kubectl run -i --tty --rm kafka-client --image=bitnami/kafka:3.9.0 --namespace=kafka -- bash
 
 kafka-console-consumer.sh --bootstrap-server my-cluster-kafka-bootstrap.kafka.svc:29092 --topic ORA_TABLE_REPORT_SENDS --from-beginning --max-messages 1 | od -tx1 -c
+
+
+http://192.168.64.103:8282/apis/registry/v2/search/artifacts
+http://192.168.64.103:8282/apis/registry/v2/groups/default/artifacts/ORA_TABLE_REPORT_SENDS-value
+http://192.168.64.103:8282/apis/registry/v2/groups/default/artifacts/ORA_TABLE_REPORT_SENDS-value/versions
