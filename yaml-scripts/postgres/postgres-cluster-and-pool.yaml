@@ -1,0 +1,178 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: postgres-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: postgres-system
+type: Opaque
+data:
+  postgres-password: cGFzc3dvcmQ=  # base64 encoded 'password'
+  replication-password: cmVwbGljYXRvcg==  # base64 encoded 'replicator'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-scripts
+  namespace: postgres-system
+data:
+  init.sh: |
+    #!/bin/bash
+    POD_INDEX=$(echo $HOSTNAME | grep -o '[0-9]\+$')
+    if [ "$POD_INDEX" -ne 0 ]; then
+      echo "Setting up replica..."
+      pg_basebackup -h postgres-0.postgres.postgres-system.svc.cluster.local -U replicator -D /var/lib/postgresql/data/pgdata -P --wal-method=stream
+      touch /var/lib/postgresql/data/pgdata/standby.signal
+    fi
+  start.sh: |
+    #!/bin/bash
+    POD_INDEX=$(echo $HOSTNAME | grep -o '[0-9]\+$')
+    if [ "$POD_INDEX" -eq 0 ]; then
+      echo "Starting master..."
+      exec postgres -c listen_addresses='*' -c wal_level=replica -c max_wal_senders=10 -c max_replication_slots=10
+    else
+      echo "Starting replica..."
+      exec postgres -c listen_addresses='*' -c hot_standby=on
+    fi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb-script
+  namespace: postgres-system
+data:
+  initdb.sh: |
+    #!/bin/bash
+    set -e
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<EOF
+    CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD '$REPLICATION_PASSWORD';
+    EOF
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: postgres-system
+spec:
+  serviceName: postgres
+  replicas: 2
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      initContainers:
+        - name: init-replica
+          image: postgres:13
+          command: ["/bin/bash", "/scripts/init.sh"]
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      containers:
+        - name: postgres
+          image: postgres:13
+          command: ["/bin/bash", "/scripts/start.sh"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: postgres-password
+            - name: REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: replication-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: scripts
+              mountPath: /scripts
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: scripts
+          configMap:
+            name: postgres-scripts
+            defaultMode: 0755
+        - name: initdb
+          configMap:
+            name: postgres-initdb-script
+            defaultMode: 0755
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-client-retain
+        resources:
+          requests:
+            storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: postgres-system
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgpool
+  namespace: postgres-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pgpool
+  template:
+    metadata:
+      labels:
+        app: pgpool
+    spec:
+      containers:
+      - name: pgpool
+        image: pgpool/pgpool-ii:latest
+        ports:
+        - containerPort: 9999
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: postgres-password
+        - name: DB_HOSTS
+          value: "postgres-0.postgres.postgres-system.svc.cluster.local:5432:rw,postgres-1.postgres.postgres-system.svc.cluster.local:5432:ro"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgpool-service
+  namespace: postgres-system
+spec:
+  type: LoadBalancer
+  loadBalancerIP: "192.168.64.108"
+  ports:
+  - port: 5432
+    targetPort: 9999
+  selector:
+    app: pgpool
