@@ -39,13 +39,14 @@ data:
         echo "max_wal_senders = 10" >> "$DATA_DIR/postgresql.conf"
         echo "max_replication_slots = 10" >> "$DATA_DIR/postgresql.conf"
         echo "host replication replicator 10.244.0.0/16 trust" >> "$DATA_DIR/pg_hba.conf"
+        echo "host all all 10.244.0.0/16 trust" >> "$DATA_DIR/pg_hba.conf"
         # Start PostgreSQL temporarily to create replicator user
         postgres -D "$DATA_DIR" &
         PG_PID=$!
         sleep 5  # Wait for PostgreSQL to start
         psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<EOF
         CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD '$REPLICATION_PASSWORD';
-EOF
+    EOF
         kill $PG_PID
         wait $PG_PID
       else
@@ -59,6 +60,7 @@ EOF
         sleep 5
       done
       pg_basebackup -h postgres-0.postgres.postgres-system.svc.cluster.local -U replicator -D "$DATA_DIR" -P --wal-method=stream
+      echo "host all all 10.244.0.0/16 trust" >> "$DATA_DIR/pg_hba.conf"
       touch "$DATA_DIR/standby.signal"
     fi
   start.sh: |
@@ -83,7 +85,7 @@ data:
     set -e
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<EOF
     CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD '$REPLICATION_PASSWORD';
-EOF
+    EOF
 ---
 apiVersion: apps/v1
 kind: StatefulSet
