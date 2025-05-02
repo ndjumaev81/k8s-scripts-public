@@ -25,16 +25,29 @@ metadata:
 data:
   init.sh: |
     #!/bin/bash
+    set -e
+
     POD_INDEX=$(echo $HOSTNAME | grep -o '[0-9]\+$')
+    DATA_DIR="/var/lib/postgresql/data/pgdata"
+
     if [ "$POD_INDEX" -eq 0 ]; then
-      if [ ! -d "/var/lib/postgresql/data/pgdata" ]; then
+      if [ ! -d "$DATA_DIR" ]; then
         echo "Initializing master database..."
-        initdb -D /var/lib/postgresql/data/pgdata
+        initdb -D "$DATA_DIR"
+      else
+        echo "Master data directory already exists."
       fi
     else
       echo "Setting up replica..."
-      pg_basebackup -h postgres-0.postgres.postgres-system.svc.cluster.local -U replicator -D /var/lib/postgresql/data/pgdata -P --wal-method=stream
-      touch /var/lib/postgresql/data/pgdata/standby.signal
+      # Wait for the master to be ready
+      until pg_isready -h postgres-0.postgres.postgres-system.svc.cluster.local -U replicator; do
+        echo "Waiting for master to be ready..."
+        sleep 5
+      done
+      # Run pg_basebackup to replicate data from master
+      pg_basebackup -h postgres-0.postgres.postgres-system.svc.cluster.local -U replicator -D "$DATA_DIR" -P --wal-method=stream
+      # Create standby.signal to indicate replica mode
+      touch "$DATA_DIR/standby.signal"
     fi
   start.sh: |
     #!/bin/bash
