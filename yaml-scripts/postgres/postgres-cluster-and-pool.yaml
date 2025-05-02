@@ -12,6 +12,10 @@ type: Opaque
 data:
   postgres-password: cGFzc3dvcmQ=  # base64 encoded 'password'
   replication-password: cmVwbGljYXRvcg==  # base64 encoded 'replicator'
+  pgpool-admin-password: cGFzc3dvcmQ=  # base64 for 'password'
+  pgpool-sr-check-password: cGFzc3dvcmQ=  # base64 for 'password'
+  pgpool-health-check-password: cGFzc3dvcmQ=  # base64 for 'password'
+  pgpool-postgres-password: cGFzc3dvcmQ=  # base64 encoded 'password'
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -22,7 +26,12 @@ data:
   init.sh: |
     #!/bin/bash
     POD_INDEX=$(echo $HOSTNAME | grep -o '[0-9]\+$')
-    if [ "$POD_INDEX" -ne 0 ]; then
+    if [ "$POD_INDEX" -eq 0 ]; then
+      if [ ! -d "/var/lib/postgresql/data/pgdata" ]; then
+        echo "Initializing master database..."
+        initdb -D /var/lib/postgresql/data/pgdata
+      fi
+    else
       echo "Setting up replica..."
       pg_basebackup -h postgres-0.postgres.postgres-system.svc.cluster.local -U replicator -D /var/lib/postgresql/data/pgdata -P --wal-method=stream
       touch /var/lib/postgresql/data/pgdata/standby.signal
@@ -67,6 +76,9 @@ spec:
       labels:
         app: postgres
     spec:
+      securityContext:
+        runAsUser: 999  # Run as 'postgres' user (UID 999)
+        runAsGroup: 999 # Optional: Set the group ID
       initContainers:
         - name: init-replica
           image: postgres:13
@@ -119,7 +131,7 @@ spec:
         storageClassName: nfs-client-retain
         resources:
           requests:
-            storage: 50Gi
+            storage: 20Gi
 ---
 apiVersion: v1
 kind: Service
@@ -140,7 +152,7 @@ metadata:
   name: pgpool
   namespace: postgres-system
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
       app: pgpool
@@ -151,17 +163,47 @@ spec:
     spec:
       containers:
       - name: pgpool
-        image: pgpool/pgpool-ii:latest
+        image: bitnami/pgpool:latest
         ports:
         - containerPort: 9999
+        resources:
+          limits:
+            cpu: "0.5"
+            memory: "512Mi"
+          requests:
+            cpu: "0.2"
+            memory: "256Mi"
         env:
-        - name: POSTGRES_PASSWORD
+        - name: PGPOOL_ADMIN_USERNAME
+          value: "admin"
+        - name: PGPOOL_ADMIN_PASSWORD
           valueFrom:
             secretKeyRef:
               name: postgres-secret
-              key: postgres-password
-        - name: DB_HOSTS
-          value: "postgres-0.postgres.postgres-system.svc.cluster.local:5432:rw,postgres-1.postgres.postgres-system.svc.cluster.local:5432:ro"
+              key: pgpool-admin-password
+        - name: PGPOOL_SR_CHECK_USER
+          value: "replicator"
+        - name: PGPOOL_SR_CHECK_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: pgpool-sr-check-password
+        - name: PGPOOL_HEALTH_CHECK_USER
+          value: "healthcheck"
+        - name: PGPOOL_HEALTH_CHECK_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: pgpool-health-check-password
+        - name: PGPOOL_POSTGRES_USERNAME
+          value: "postgres"
+        - name: PGPOOL_POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: pgpool-postgres-password
+        - name: PGPOOL_BACKEND_NODES
+          value: "0:postgres-0.postgres.postgres-system.svc.cluster.local:5432,1:postgres-1.postgres.postgres-system.svc.cluster.local:5432"
 ---
 apiVersion: v1
 kind: Service
