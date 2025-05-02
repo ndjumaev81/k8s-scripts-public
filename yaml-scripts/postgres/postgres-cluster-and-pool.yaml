@@ -34,19 +34,31 @@ data:
       if [ ! -d "$DATA_DIR" ]; then
         echo "Initializing master database..."
         initdb -D "$DATA_DIR"
+        # Configure replication settings
+        echo "wal_level = replica" >> "$DATA_DIR/postgresql.conf"
+        echo "max_wal_senders = 10" >> "$DATA_DIR/postgresql.conf"
+        echo "max_replication_slots = 10" >> "$DATA_DIR/postgresql.conf"
+        echo "host replication replicator 10.244.0.0/16 trust" >> "$DATA_DIR/pg_hba.conf"
+        # Start PostgreSQL temporarily to create replicator user
+        postgres -D "$DATA_DIR" &
+        PG_PID=$!
+        sleep 5  # Wait for PostgreSQL to start
+        psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<EOF
+        CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD '$REPLICATION_PASSWORD';
+EOF
+        kill $PG_PID
+        wait $PG_PID
       else
         echo "Master data directory already exists."
       fi
     else
       echo "Setting up replica..."
-      # Wait for the master to be ready
+      export PGPASSWORD="$REPLICATION_PASSWORD"
       until pg_isready -h postgres-0.postgres.postgres-system.svc.cluster.local -U replicator; do
         echo "Waiting for master to be ready..."
         sleep 5
       done
-      # Run pg_basebackup to replicate data from master
       pg_basebackup -h postgres-0.postgres.postgres-system.svc.cluster.local -U replicator -D "$DATA_DIR" -P --wal-method=stream
-      # Create standby.signal to indicate replica mode
       touch "$DATA_DIR/standby.signal"
     fi
   start.sh: |
@@ -54,7 +66,7 @@ data:
     POD_INDEX=$(echo $HOSTNAME | grep -o '[0-9]\+$')
     if [ "$POD_INDEX" -eq 0 ]; then
       echo "Starting master..."
-      exec postgres -c listen_addresses='*' -c wal_level=replica -c max_wal_senders=10 -c max_replication_slots=10
+      exec postgres -c listen_addresses='*'
     else
       echo "Starting replica..."
       exec postgres -c listen_addresses='*' -c hot_standby=on
@@ -71,7 +83,7 @@ data:
     set -e
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<EOF
     CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD '$REPLICATION_PASSWORD';
-    EOF
+EOF
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -90,12 +102,18 @@ spec:
         app: postgres
     spec:
       securityContext:
-        runAsUser: 999  # Run as 'postgres' user (UID 999)
-        runAsGroup: 999 # Optional: Set the group ID
+        runAsUser: 999
+        runAsGroup: 999
       initContainers:
         - name: init-replica
           image: postgres:13
           command: ["/bin/bash", "/scripts/init.sh"]
+          env:
+            - name: REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: replication-password          
           volumeMounts:
             - name: scripts
               mountPath: /scripts
