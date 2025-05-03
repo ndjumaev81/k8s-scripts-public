@@ -51,3 +51,16 @@ SELECT pg_is_in_recovery();
 
 # Scaling Up to 3 and Down back to 2 Replicas. Don't forget to update pgpool config.
 Pgpool Limitation: The PGPOOL_BACKEND_NODES in your YAML is static and doesn’t include postgres-2. You may need to update it dynamically or configure Pgpool’s watchdog for automatic node detection.
+
+# To avoid these issues, the most straightforward and robust approach is to use an idempotent operation like an UPSERT (INSERT ... ON CONFLICT). This eliminates the need for a separate SELECT to check existence, as the database handles both the insert and update in a single atomic operation on the master node. Here’s how it works:
+#    Send a single UPSERT query to the master.
+#    If the object doesn’t exist, it inserts it.
+#    If it exists (based on a unique constraint, like an ID), it updates it.
+#    The operation is atomic, so parallel processes won’t interfere with each other.
+
+# This approach:
+#    Avoids reliance on potentially stale replica data.
+#    Prevents race conditions by letting the database resolve conflicts.
+#    Reduces the risk of deadlocks since no explicit locking or multi-step logic is needed.
+
+INSERT INTO test_table (id, name) VALUES (2,'test2updated') ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
