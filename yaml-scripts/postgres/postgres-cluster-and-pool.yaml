@@ -30,6 +30,11 @@ data:
     POD_INDEX=$(echo $HOSTNAME | grep -o '[0-9]\+$')
     DATA_DIR="/var/lib/postgresql/data/pgdata"
 
+    if [ -z "$REPLICATION_PASSWORD" ]; then
+      echo "Error: REPLICATION_PASSWORD is not set."
+      exit 1
+    fi
+
     if [ "$POD_INDEX" -eq 0 ]; then
       if [ ! -d "$DATA_DIR" ]; then
         echo "Initializing master database..."
@@ -46,6 +51,7 @@ data:
         sleep 5  # Wait for PostgreSQL to start
         psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<EOF
         CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD '$REPLICATION_PASSWORD';
+        CREATE USER healthcheck WITH PASSWORD 'healthcheck_password';
     EOF
         kill $PG_PID
         wait $PG_PID
@@ -61,6 +67,8 @@ data:
       done
       pg_basebackup -h postgres-0.postgres.postgres-system.svc.cluster.local -U replicator -D "$DATA_DIR" -P --wal-method=stream
       echo "host all all 10.244.0.0/16 trust" >> "$DATA_DIR/pg_hba.conf"
+      # Configure primary_conninfo for streaming replication
+      echo "primary_conninfo = 'host=postgres-0.postgres.postgres-system.svc.cluster.local port=5432 user=replicator password=$REPLICATION_PASSWORD'" >> "$DATA_DIR/postgresql.conf"      
       touch "$DATA_DIR/standby.signal"
     fi
   start.sh: |
@@ -73,19 +81,6 @@ data:
       echo "Starting replica..."
       exec postgres -c listen_addresses='*' -c hot_standby=on
     fi
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: postgres-initdb-script
-  namespace: postgres-system
-data:
-  initdb.sh: |
-    #!/bin/bash
-    set -e
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<EOF
-    CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD '$REPLICATION_PASSWORD';
-    EOF
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -145,16 +140,10 @@ spec:
               mountPath: /var/lib/postgresql/data
             - name: scripts
               mountPath: /scripts
-            - name: initdb
-              mountPath: /docker-entrypoint-initdb.d
       volumes:
         - name: scripts
           configMap:
             name: postgres-scripts
-            defaultMode: 0755
-        - name: initdb
-          configMap:
-            name: postgres-initdb-script
             defaultMode: 0755
   volumeClaimTemplates:
     - metadata:
@@ -198,7 +187,8 @@ spec:
       - name: pgpool
         image: bitnami/pgpool:latest
         ports:
-        - containerPort: 9999
+        - containerPort: 5432  # Pgpool connection port for PostgreSQL clients
+        - containerPort: 9898  # PCP port for Pgpool management
         resources:
           limits:
             cpu: "0.5"
@@ -221,6 +211,8 @@ spec:
             secretKeyRef:
               name: postgres-secret
               key: pgpool-sr-check-password
+        - name: PGPOOL_SR_CHECK_DATABASE
+          value: "postgres"
         - name: PGPOOL_HEALTH_CHECK_USER
           value: "healthcheck"
         - name: PGPOOL_HEALTH_CHECK_PASSWORD
@@ -228,6 +220,8 @@ spec:
             secretKeyRef:
               name: postgres-secret
               key: pgpool-health-check-password
+        - name: PGPOOL_HEALTH_CHECK_DATABASE
+          value: "postgres"
         - name: PGPOOL_POSTGRES_USERNAME
           value: "postgres"
         - name: PGPOOL_POSTGRES_PASSWORD
@@ -247,7 +241,13 @@ spec:
   type: LoadBalancer
   loadBalancerIP: "192.168.64.108"
   ports:
-  - port: 5432
-    targetPort: 9999
+  - port: 5432          # External port for PostgreSQL clients
+    targetPort: 5432    # Matches Pgpool's container port for client connections
+    protocol: TCP
+    name: pgpool-client
+  - port: 9898          # Optional: External port for PCP management
+    targetPort: 9898    # Matches Pgpool's container port for PCP
+    protocol: TCP
+    name: pgpool-pcp
   selector:
     app: pgpool
