@@ -168,6 +168,31 @@ spec:
     - port: 5432
       targetPort: 5432
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgpool-config
+  namespace: postgres-system
+data:
+  pgpool.conf: |
+    enable_ddl = off
+    master_slave_mode = on
+    master_slave_sub_mode = 'stream'
+    # Add other pgpool configurations as needed
+    backend_hostname0 = 'postgres-0.postgres.postgres-system.svc.cluster.local'
+    backend_port0 = 5432
+    backend_weight0 = 1
+    backend_hostname1 = 'postgres-1.postgres.postgres-system.svc.cluster.local'
+    backend_port1 = 5432
+    backend_weight1 = 1
+    sr_check_period = 10
+    sr_check_user = 'replicator'
+    sr_check_password = 'password'  # Matches secret
+    health_check_period = 10
+    health_check_user = 'healthcheck'
+    health_check_password = 'healthcheck_password'  # Matches secret
+    health_check_database = 'postgres'
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -185,7 +210,7 @@ spec:
     spec:
       containers:
       - name: pgpool
-        image: bitnami/pgpool:latest
+        image: bitnami/pgpool:4.4.2
         ports:
         - containerPort: 5432  # Pgpool connection port for PostgreSQL clients
         - containerPort: 9898  # PCP port for Pgpool management
@@ -231,6 +256,17 @@ spec:
               key: pgpool-postgres-password
         - name: PGPOOL_BACKEND_NODES
           value: "0:postgres-0.postgres.postgres-system.svc.cluster.local:5432,1:postgres-1.postgres.postgres-system.svc.cluster.local:5432"
+        - name: PGPOOL_CONFIG_FILE
+          value: "/bitnami/pgpool/conf/pgpool.conf"  # Override default config path
+        volumeMounts:
+        - name: pgpool-config
+          mountPath: /bitnami/pgpool/conf/pgpool.conf
+          subPath: pgpool.conf
+      volumes:
+      - name: pgpool-config
+        configMap:
+          name: pgpool-config
+          defaultMode: 0644
 ---
 apiVersion: v1
 kind: Service
