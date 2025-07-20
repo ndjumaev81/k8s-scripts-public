@@ -44,9 +44,17 @@ else
 fi
 
 # ----- Download Whisper Models -----
-echo "⬇️ Downloading Whisper models..."
+echo "⬇️ Preparing to download Whisper models..."
 cd ~/whisper.cpp
-mkdir -p models
+
+if [ -d models ]; then
+  echo "📂 'models' directory already exists. Listing contents:"
+  ls -lh models
+else
+  echo "📁 Creating 'models' directory..."
+  mkdir models
+fi
+
 cd models
 
 declare -A WHISPER_MODELS=(
@@ -58,7 +66,9 @@ declare -A WHISPER_MODELS=(
 
 ALL_OK=true
 for model in "${!WHISPER_MODELS[@]}"; do
-  if [ ! -f "$model" ]; then
+  if [ -f "$model" ]; then
+    echo "✅ $model already exists (size: $(du -h "$model" | cut -f1))"
+  else
     echo "📦 Downloading $model..."
     if curl -fLO "${WHISPER_MODELS[$model]}"; then
       echo "✅ $model downloaded"
@@ -66,8 +76,6 @@ for model in "${!WHISPER_MODELS[@]}"; do
       echo "❌ Failed to download $model"
       ALL_OK=false
     fi
-  else
-    echo "✅ $model already exists"
   fi
 done
 
