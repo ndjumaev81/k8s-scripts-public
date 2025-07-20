@@ -120,17 +120,20 @@ if [ ! -f build/main ]; then
 fi
 
 # ensure whisper executable exists
-if [ -f build/main ]; then
-  ln -sf build/main whisper
+if [ -f build/bin/whisper-cli ]; then
+  ln -sf build/bin/whisper-cli whisper-cli
+  ln -sf build/bin/main whisper
   SUMMARY["Whisper"]="✅ Built"
-  echo "✅ whisper binary set up"
+  echo "✅ whisper binaries set up"
 else
   echo "❗ Failed to build whisper.cpp – retrying..."
   cd ~/whisper.cpp
   make || cmake --build build --config Release
-  if [ -f build/main ]; then
-    ln -sf build/main whisper
+  if [ -f build/bin/whisper-cli ]; then
+    ln -sf build/bin/whisper-cli whisper-cli
+    ln -sf build/bin/main whisper
     SUMMARY["Whisper"]="✅ Built (retry)"
+    echo "✅ whisper binaries set up after retry"
   else
     SUMMARY["Whisper"]="❌ Build failed"
     echo "⚠️ whisper build failed twice. Check errors above."
