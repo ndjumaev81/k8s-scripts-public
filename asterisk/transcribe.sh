@@ -11,4 +11,10 @@ if [ ! -x "$BIN" ]; then
   exit 1
 fi
 
+if [ ! -f "$MODEL" ]; then
+  echo "❌ Model file not found at $MODEL"
+  exit 1
+fi
+
+echo "🧠 Running whisper model..."
 "$BIN" -m "$MODEL" -f "$FORMATTED"
