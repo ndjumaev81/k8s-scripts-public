@@ -87,12 +87,19 @@ cd ..
 
 SUMMARY["Models"]=$([ "$ALL_OK" = true ] && echo "✅ All present" || echo "⚠️ Some missing")
 
+# ----- Install Binaries Globally -----
 if [ -f ~/whisper.cpp/build/bin/whisper ]; then
-  sudo cp ~/whisper.cpp/build/bin/whisper /usr/local/bin/
-  echo "✅ whisper copied to /usr/local/bin"
+  echo "🔗 Installing whisper to /usr/local/bin"
+  sudo install -m 755 ~/whisper.cpp/build/bin/whisper /usr/local/bin/whisper
+  echo "✅ whisper installed globally"
+else
+  echo "❌ whisper binary not found, skipping install"
 fi
 
 if [ -f ~/whisper.cpp/build/bin/whisper-cli ]; then
-  sudo cp ~/whisper.cpp/build/bin/whisper-cli /usr/local/bin/
-  echo "✅ whisper-cli copied to /usr/local/bin"
+  echo "🔗 Installing whisper-cli to /usr/local/bin"
+  sudo install -m 755 ~/whisper.cpp/build/bin/whisper-cli /usr/local/bin/whisper-cli
+  echo "✅ whisper-cli installed globally"
+else
+  echo "❌ whisper-cli binary not found, skipping install"
 fi
