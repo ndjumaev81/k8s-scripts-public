@@ -151,6 +151,36 @@ for model in base small medium large; do
     curl -fsSL -O https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$FILE || ALL_OK=false
   fi
 done
+
+
+echo "⬇️ Downloading Whisper models..."
+
+mkdir -p models
+cd models
+
+declare -A WHISPER_MODELS=(
+  ["ggml-base.bin"]="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+  ["ggml-small.bin"]="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
+  ["ggml-medium.bin"]="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
+  ["ggml-large.bin"]="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
+)
+
+MODEL_STATUS=""
+
+for model in "${!WHISPER_MODELS[@]}"; do
+  if [ ! -f "$model" ]; then
+    echo "📦 Downloading $model..."
+    if curl -fLO "${WHISPER_MODELS[$model]}"; then
+      echo "✅ $model downloaded"
+    else
+      echo "❌ Failed to download $model"
+      MODEL_STATUS+=" ❌ $model "
+    fi
+  else
+    echo "✅ $model already exists"
+  fi
+done
+
 cd ..
 
 SUMMARY["Models"]=$([ "$ALL_OK" = true ] && echo "✅ All present" || echo "⚠️ Some missing")
