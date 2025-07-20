@@ -86,3 +86,13 @@ done
 cd ..
 
 SUMMARY["Models"]=$([ "$ALL_OK" = true ] && echo "✅ All present" || echo "⚠️ Some missing")
+
+if [ -f ~/whisper.cpp/build/bin/whisper ]; then
+  sudo cp ~/whisper.cpp/build/bin/whisper /usr/local/bin/
+  echo "✅ whisper copied to /usr/local/bin"
+fi
+
+if [ -f ~/whisper.cpp/build/bin/whisper-cli ]; then
+  sudo cp ~/whisper.cpp/build/bin/whisper-cli /usr/local/bin/
+  echo "✅ whisper-cli copied to /usr/local/bin"
+fi
