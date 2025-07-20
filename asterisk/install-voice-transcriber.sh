@@ -6,6 +6,9 @@ exec > >(tee -a "$LOGFILE") 2>&1
 
 export DEBIAN_FRONTEND=noninteractive
 
+# Suppress region prompt (safe default)
+echo "libtonezone1:tzcode string 1" | sudo debconf-set-selections
+
 echo ""
 echo "🔧 Voice Transcriber Setup Starting: $(date)"
 echo "📄 Log file: $LOGFILE"
