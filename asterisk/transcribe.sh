@@ -1,5 +1,5 @@
 #!/bin/bash
-SOURCE="/tmp/recording.wav"
+SOURCE="/var/spool/asterisk/recordings/recording.wav"
 FORMATTED="/tmp/recording16.wav"
 MODEL="$HOME/whisper.cpp/models/ggml-large-v3.bin"
 BIN="/usr/local/bin/whisper-cli"

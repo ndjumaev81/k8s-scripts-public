@@ -49,8 +49,10 @@ sudo tee "$EXTENSIONS_CONF" > /dev/null <<EOF
 [default]
 exten => s,1,Answer()
  same => n,Playback(hello-world) ; built-in prompt
+ same => n,Wait(1)
  same => n,Playback(beep)
- same => n,Record(/tmp/recording.wav,5,30,k) ; record up to 30s
+ same => n,Record(/var/spool/asterisk/recordings/recording.wav,5,30,k)
+ same => n,Playback(vm-goodbye)
  same => n,Hangup()
 EOF
 
