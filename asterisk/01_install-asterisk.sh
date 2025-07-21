@@ -44,6 +44,11 @@ else
   SUMMARY["Asterisk"]="✅ Already Installed"
 fi
 
+# ----- Asterisk Config Directory -----
+echo "📁 Creating recordings directory..."
+sudo mkdir -p /var/spool/asterisk/recordings
+sudo chown -R asterisk:asterisk /var/spool/asterisk/recordings
+
 # ----- Asterisk Config -----
 PJSIP_CONF=/etc/asterisk/pjsip.conf
 EXTENSIONS_CONF=/etc/asterisk/extensions.conf
@@ -84,7 +89,10 @@ if ! grep -q "exten => 1000,1,Answer()" "$EXTENSIONS_CONF"; then
 [default]
 exten => 1000,1,Answer()
  same => n,Playback(hello-world)
- same => n,Record(/tmp/recording.wav,5,60)
+ same => n,Wait(1)
+ same => n,Playback(beep)
+ same => n,Record(/var/spool/asterisk/recordings/recording.wav,5,30,k)
+ same => n,Playback(vm-goodbye)
  same => n,Hangup()
 EOF
   CONFIGURED=true
