@@ -90,7 +90,6 @@ if ! grep -q "exten => 1000,1,Answer()" "$EXTENSIONS_CONF"; then
 exten => 1000,1,Answer()
  same => n,Playback(hello-world)
  same => n,Wait(1)
- same => n,Playback(beep)
  same => n,Record(/var/spool/asterisk/recordings/recording.wav,5,30,k)
  same => n,Playback(vm-goodbye)
  same => n,Hangup()
